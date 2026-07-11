@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0c0b09">
+<style>
+html { height: -webkit-fill-available; }
+body { min-height: 100vh; min-height: -webkit-fill-available; }
+</style>
+<title>Registro Studio</title>
+<style>
+:root{
+  --bg:#0c0b09; --panel:#151310; --panel2:#1c1915; --line:#2a2620;
+  --gold:#b89454; --gold-dim:#8a6f3f; --green:#4a9c5a;
+  --text:#e9e4d8; --muted:#8d8574; --red:#c05a4a;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:"Helvetica Neue",Arial,sans-serif;font-size:15px;min-height:100vh}
+h1,h2,h3,.serif{font-family:"Bodoni MT",Didot,"Playfair Display",Georgia,serif}
+button{cursor:pointer;font-family:inherit}
+input,select,textarea{font-family:inherit;font-size:15px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:9px 12px;outline:none}
+input:focus,select:focus{border-color:var(--gold-dim)}
+
+/* lingua */
+.langsel{position:fixed;top:12px;right:12px;z-index:200;display:flex;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.langsel button{background:var(--panel);color:var(--muted);border:none;padding:6px 12px;font-size:12px;letter-spacing:1px;font-weight:600}
+.langsel button.on{background:var(--gold);color:#141210}
+
+/* gate */
+#gate{
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  background:var(--bg);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:40px 16px;
+  position: relative;
+  z-index:100;
+}
+.gate-box{width:340px;max-width:92vw;text-align:center}
+.gate-box .mark{font-size:52px;color:var(--gold);letter-spacing:6px;margin-bottom:6px}
+.gate-box h1{font-size:22px;letter-spacing:5px;text-transform:uppercase;margin-bottom:28px;font-weight:400}
+.gate-box input{width:100%;text-align:center;letter-spacing:2px;margin-bottom:12px}
+.gate-box button.main{width:100%;background:var(--gold);color:#141210;border:none;padding:11px;border-radius:6px;font-weight:600;letter-spacing:2px;text-transform:uppercase;font-size:13px}
+.gate-box .err{color:var(--red);font-size:13px;margin-top:10px;min-height:18px}
+.gate-box .hint{color:var(--muted);font-size:12px;margin-top:16px;line-height:1.6;text-align:left}
+.gate-box .divider{margin:18px 0 12px;font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+.gate-box details{text-align:left;margin-top:14px}
+.gate-box summary{color:var(--gold-dim);font-size:12.5px;cursor:pointer;letter-spacing:.5px}
+.gate-box details input{text-align:left;letter-spacing:0;margin-top:10px;font-size:13px}
+
+/* layout */
+#app{display:none;max-width:1060px;margin:0 auto;padding:24px 18px 150px}
+header.top{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:12px;flex-wrap:wrap;gap:10px;padding-right:90px}
+header.top h1{font-size:26px;letter-spacing:4px;text-transform:uppercase;font-weight:400}
+header.top h1 span{color:var(--gold)}
+.topbtns{display:flex;gap:8px;flex-wrap:wrap}
+.topbtns button{background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px 12px;font-size:12px;letter-spacing:1px}
+.topbtns button:hover{border-color:var(--gold-dim);color:var(--gold)}
+#syncstatus{font-size:11.5px;letter-spacing:1px;color:var(--muted);margin-bottom:16px}
+#syncstatus.on{color:var(--green)}
+#syncstatus.err{color:var(--red)}
+
+/* dashboard */
+.dash{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:26px}
+@media(max-width:640px){.dash{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+.card .lbl{font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.card .lbl b{color:var(--gold);font-weight:600}
+.rows3{display:flex;justify-content:space-between;gap:8px}
+.rows3 .cell{flex:1}
+.cell .n{font-family:"Bodoni MT",Didot,Georgia,serif;font-size:26px;line-height:1.1}
+.cell .t{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:4px}
+.n.gold{color:var(--gold)}.n.green{color:var(--green)}.n.due{color:#d8b978}
+
+section{margin-bottom:28px}
+section > h2{font-size:15px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);font-weight:400;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+section > h2::after{content:"";flex:1;height:1px;background:var(--line)}
+
+.proj{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.proj-head{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer}
+.proj-head:hover{background:var(--panel2)}
+.badge{font-size:10px;letter-spacing:1.5px;padding:3px 8px;border-radius:4px;text-transform:uppercase}
+.badge.op{background:rgba(184,148,84,.14);color:var(--gold)}
+.badge.az{background:rgba(74,156,90,.14);color:var(--green)}
+.proj-name{font-family:Georgia,serif;font-size:17px;flex:1}
+.proj-sum{font-size:13px;color:var(--muted)}
+.proj-sum b{color:var(--text);font-weight:600}
+.proj-body{display:none;border-top:1px solid var(--line);padding:6px 16px 14px}
+.proj.open .proj-body{display:block}
+.pay-row{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
+.pay-row:last-of-type{border-bottom:none}
+.pay-row .d{color:var(--muted);width:86px}
+.pay-row .ty{width:120px}
+.pay-row .am{width:90px;text-align:right;font-weight:600}
+.pay-row .me{color:var(--muted);flex:1}
+.pay-row .del{background:none;border:none;color:var(--muted);font-size:15px;padding:2px 6px}
+.pay-row .del:hover{color:var(--red)}
+.mini{background:none;border:1px dashed var(--line);color:var(--muted);border-radius:6px;padding:6px 12px;font-size:12px;margin-top:10px;margin-right:8px}
+.mini:hover{color:var(--gold);border-color:var(--gold-dim)}
+
+.out-row{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:7px;font-size:13.5px}
+.out-row .d{color:var(--muted);width:86px}
+.out-row .who{width:110px}
+.out-row .am{width:100px;text-align:right;font-weight:600;color:#d8b978}
+.out-row .me{color:var(--muted);flex:1}
+.empty{color:var(--muted);font-size:13px;padding:14px;text-align:center;border:1px dashed var(--line);border-radius:8px}
+
+/* chat */
+#chatlog{margin-bottom:10px}
+.msg{max-width:78%;padding:10px 14px;border-radius:10px;margin-bottom:8px;font-size:14px;line-height:1.5}
+.msg.me{background:var(--panel2);border:1px solid var(--line);margin-left:auto}
+.msg.bot{background:var(--panel);border:1px solid var(--line)}
+.msg.bot.ok{border-color:rgba(74,156,90,.4)}
+.msg.bot.warn{border-color:rgba(192,90,74,.4)}
+#chatbar{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);padding:20px 18px 18px}
+.chat-inner{max-width:1060px;margin:0 auto;display:flex;gap:10px}
+#chatinput{flex:1;padding:13px 16px;border-radius:10px;border:1px solid var(--gold-dim);background:var(--panel)}
+#chatsend{background:var(--gold);border:none;color:#141210;border-radius:10px;padding:0 22px;font-weight:700;letter-spacing:1px}
+
+.confirm{background:var(--panel);border:1px solid var(--gold-dim);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.confirm .ct{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px}
+.cgrid label{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.cgrid input,.cgrid select{width:100%;padding:7px 9px;font-size:14px}
+.cbtns{display:flex;gap:8px}
+.cbtns .yes{background:var(--green);border:none;color:#0d130e;padding:8px 18px;border-radius:6px;font-weight:600}
+.cbtns .no{background:none;border:1px solid var(--line);color:var(--muted);padding:8px 18px;border-radius:6px}
+
+/* modal */
+#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:90;align-items:center;justify-content:center}
+#modal .mbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;width:min(460px,94vw);max-height:88vh;overflow-y:auto}
+#modal h3{font-size:15px;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;font-weight:400;color:var(--gold)}
+#modal .mrow{margin-bottom:12px}
+#modal label{display:block;font-size:11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:5px}
+#modal input,#modal select{width:100%}
+#modal .mbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+#modal .save{background:var(--gold);border:none;color:#141210;padding:9px 20px;border-radius:6px;font-weight:600}
+#modal .cancel{background:none;border:1px solid var(--line);color:var(--muted);padding:9px 20px;border-radius:6px}
+#modal .danger{background:none;border:1px solid var(--red);color:var(--red);padding:9px 20px;border-radius:6px}
+#modal .note{font-size:12.5px;color:var(--muted);line-height:1.7;margin-bottom:14px}
+#modal .note a{color:var(--gold)}
+#modal code{color:var(--gold);background:var(--panel2);padding:1px 6px;border-radius:4px;font-size:12px;word-break:break-all}
+
+.help{font-size:12.5px;color:var(--muted);line-height:1.7;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin-bottom:14px}
+.help code{color:var(--gold);background:var(--panel2);padding:1px 6px;border-radius:4px;font-size:12px}
+
+/* viste a schede */
+.view{display:none}
+.view.on{display:block}
+#nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--panel);border-top:1px solid var(--line);z-index:80;padding-bottom:env(safe-area-inset-bottom)}
+#nav button{flex:1;background:none;border:none;color:var(--muted);padding:14px 0;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:600}
+#nav button.on{color:var(--gold);border-top:2px solid var(--gold);margin-top:-1px}
+#chatbar{bottom:52px}
+body.reg-view #chatbar{display:none}
+
+/* riassunto compatto sopra la chat */
+#minidash{display:flex;gap:10px;margin-bottom:14px}
+#minidash .mcell{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;text-align:center}
+#minidash .mcell .v{font-family:"Bodoni MT",Didot,Georgia,serif;font-size:20px;color:#d8b978}
+#minidash .mcell .k{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:2px}
+#minidash .mcell .k b{font-weight:600}
+#minidash .mcell.mop .k b{color:var(--gold)}
+#minidash .mcell.maz .k b{color:var(--green)}
+
+/* mobile */
+@media(max-width:600px){
+  body{font-size:16px}
+  #app{padding:16px 12px 190px}
+  header.top{padding-right:80px}
+  header.top h1{font-size:20px;letter-spacing:2px}
+  .topbtns button{padding:8px 14px;font-size:14px}
+  .card{padding:15px}
+  .rows3{flex-direction:column;gap:12px}
+  .rows3 .cell{display:flex;justify-content:space-between;align-items:baseline}
+  .cell .n{font-size:22px}
+  .cell .t{margin-top:0}
+  .proj-head{flex-wrap:wrap;padding:14px}
+  .proj-name{width:100%;order:1;font-size:16px}
+  .badge{order:0}
+  .proj-sum{order:2;width:100%;font-size:12.5px}
+  .pay-row{flex-wrap:wrap;gap:4px 10px;padding:10px 0}
+  .pay-row .d{width:auto;order:1}
+  .pay-row .ty{width:auto;order:2;color:var(--text)}
+  .pay-row .am{width:auto;order:3;margin-left:auto}
+  .pay-row .me{width:100%;order:4;flex:none;font-size:12px}
+  .pay-row .del{order:5;padding:2px 8px;font-size:18px}
+  .out-row{flex-wrap:wrap;gap:4px 10px}
+  .out-row .d{width:auto}
+  .out-row .who{width:auto}
+  .out-row .am{width:auto;margin-left:auto}
+  .out-row .me{width:100%;font-size:12px}
+  .mini{padding:9px 14px;width:100%;text-align:center;margin-right:0}
+  .msg{max-width:90%;font-size:15px}
+  #chatbar{padding:14px 10px 14px}
+  #chatinput{padding:14px 14px;font-size:16px}
+  #chatsend{padding:0 18px;font-size:14px}
+  .cgrid{grid-template-columns:1fr 1fr}
+  .gate-box{width:88vw}
+}
+@media(max-width:380px){.cgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div class="langsel">
+  <button id="lang-it" onclick="setLang('it')">IT</button>
+  <button id="lang-de" onclick="setLang('de')">DE</button>
+</div>
+
+<div id="gate">
+  <div class="gate-box">
+    <div class="mark serif">✦</div>
+    <h1 data-i="title">Registro Studio</h1>
+    <div id="gate-form"></div>
+    <div class="err" id="gate-err"></div>
+    <div class="hint" id="gate-hint"></div>
+  </div>
+</div>
+
+<div id="app">
+  <header class="top">
+    <h1><span data-i="title_a">Registro</span> <span data-i="title_b" style="color:var(--gold)">Studio</span></h1>
+    <div class="topbtns">
+      <button onclick="openModal('settings')" title="Impostazioni">⚙</button>
+      <button onclick="lockApp()" data-i="btn_lock">Blocca</button>
+      <input type="file" id="importfile" accept=".rst,.json" style="display:none" onchange="importData(this)">
+    </div>
+  </header>
+  <div id="syncstatus"></div>
+
+  <!-- VISTA CHAT (principale) -->
+  <div class="view on" id="view-chat">
+    <div id="minidash"></div>
+    <div class="help" id="helpbox"></div>
+    <div id="chatlog"></div>
+    <div id="confirmbox"></div>
+  </div>
+
+  <!-- VISTA REGISTRO -->
+  <div class="view" id="view-reg">
+    <div class="dash" id="dash"></div>
+    <section>
+      <h2 data-i="sec_projects">Progetti</h2>
+      <div id="projects"></div>
+      <button class="mini" onclick="openModal('project')" data-i="new_project">+ Nuovo progetto</button>
+    </section>
+    <section>
+      <h2 data-i="sec_payouts">Uscite</h2>
+      <div id="payouts"></div>
+      <button class="mini" onclick="openModal('payout')" data-i="new_payout">+ Nuova uscita</button>
+    </section>
+  </div>
+</div>
+
+<div id="nav" style="display:none">
+  <button id="nav-chat" class="on" onclick="switchView('chat')">Chat</button>
+  <button id="nav-reg" onclick="switchView('reg')" data-i="nav_reg">Registro</button>
+</div>
+
+<div id="chatbar">
+  <div class="chat-inner">
+    <input id="chatinput" autocomplete="off">
+    <button id="chatsend" onclick="handleChat()" data-i="chat_send">Invia</button>
+  </div>
+</div>
+
+<div id="modal"><div class="mbox" id="mbox"></div></div>
+
+<script>
+/* =================================================================
+   LINGUA (IT / DE)
+================================================================= */
+const I = {
+it:{
+  title:"Registro Studio", title_a:"Registro", title_b:"Studio",
+  gate_create1:"Crea una password", gate_create2:"Ripeti la password",
+  gate_btn_create:"Crea registro", gate_pw:"Password", gate_btn_enter:"Entra",
+  gate_hint_first:"Prima apertura su questo dispositivo. Scegli una password: i dati saranno cifrati con questa. Se la perdi, i dati non sono recuperabili.",
+  gate_link:"Ho già un registro su un altro dispositivo (collega sync)",
+  gate_token:"Token GitHub", gate_gist:"ID spazio sync (Gist ID)",
+  gate_err_short:"Password troppo corta (minimo 4 caratteri).",
+  gate_err_match:"Le password non coincidono.",
+  gate_err_wrong:"Password errata.",
+  gate_err_link:"Collegamento fallito: controlla token, ID e password.",
+  loading:"Caricamento…",
+  btn_sync:"Sync", btn_export:"Esporta", btn_import:"Importa", btn_lock:"Blocca",
+  sync_off:"Sync: non attiva · dati solo su questo dispositivo",
+  sync_on:"Sync: attiva · ultimo aggiornamento ", sync_err:"Sync: errore di connessione · dati salvati localmente",
+  card_op:"Spese <b>Operative</b>", card_az:"Spese <b>Aziendali</b>",
+  op:"Operative", az:"Aziendali",
+  accrued:"Maturato", paid:"Girato", due:"Da girare",
+  sec_projects:"Progetti", sec_payouts:"Uscite",
+  new_project:"+ Nuovo progetto", new_payout:"+ Nuova uscita",
+  add_payment:"+ Aggiungi pagamento", del_project:"Elimina progetto",
+  empty_projects:"Nessun progetto. Scrivi in chat per iniziare.",
+  empty_payouts:"Nessuna uscita registrata.", no_payments:"Nessun pagamento",
+  pays:"pagam.", ref:"rif.",
+  help:'Scrivi in chat in modo naturale, in italiano o tedesco. Esempi: <code>Maria acconto 100 euro oggi contanti</code> · <code>Maria ha pagato la prima seduta 300 il 12.07.26</code> · <code>oggi ho dato 500 di Maria a operative</code>. Ti chiedo conferma prima di salvare.',
+  chat_placeholder:"Scrivi qui… es: Maria acconto 150 oggi contanti", chat_send:"Invia",
+  bot_notunderstood:"Non ho capito bene. Prova con: <i>Nome acconto 100 oggi contanti</i>, oppure <i>ho dato 500 di Nome a operative</i>.",
+  bot_cancelled:"Annullato.", bot_missing:"Manca cliente o importo.", bot_missing_amount:"Manca l'importo.",
+  bot_registered:"Registrato", bot_payout_saved:"Uscita registrata", bot_towards:"verso",
+  confirm_payment:"Conferma pagamento cliente", confirm_payout:"Conferma uscita",
+  f_client:"Cliente", f_type:"Tipo", f_amount:"Importo €", f_date:"Data",
+  f_assigned:"Assegnato a", f_method:"Metodo", f_dest:"Destinazione", f_ref:"Rif. cliente (opz.)",
+  btn_confirm:"Conferma", btn_cancel:"Annulla", btn_save:"Salva",
+  m_new_project:"Nuovo progetto", m_new_payment:"Nuovo pagamento", m_new_payout:"Nuova uscita",
+  t_deposit:"Acconto", t_session:"Seduta", t_payment:"Pagamento",
+  ord:["","Prima","Seconda","Terza","Quarta","Quinta"],
+  m_cash:"Contanti", m_transfer:"Bonifico", m_card:"Carta", m_paypal:"PayPal",
+  del_pay_q:"Eliminare questo pagamento?", del_proj_q:"Eliminare il progetto e tutti i suoi pagamenti?",
+  del_out_q:"Eliminare questa uscita?",
+  exp_ok:"Dati esportati (file cifrato).", imp_ok:"Dati importati correttamente.",
+  imp_pw:"Password del file da importare:", imp_q:"Sostituire i dati attuali con quelli del file importato?",
+  imp_fail:"Import fallito: password errata o file non valido.",
+  sync_title:"Sincronizzazione tra dispositivi",
+  sync_note:'La sincronizzazione usa un tuo spazio privato GitHub (Gist). I dati viaggiano sempre cifrati: su GitHub è visibile solo testo illeggibile. Serve un token: su GitHub vai in <b>Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token</b>, spunta solo <b>gist</b>, crea e copia il token.',
+  sync_token:"Token GitHub", sync_gist:"ID spazio (Gist ID)",
+  sync_create:"Crea nuovo spazio sync", sync_connect:"Collega spazio esistente",
+  sync_disable:"Disattiva sync", sync_close:"Chiudi",
+  sync_active:"Sync attiva. Questo è l'ID del tuo spazio, ti serve per collegare gli altri dispositivi:",
+  sync_created:"Spazio sync creato. Su ogni altro dispositivo: apri il file, alla prima schermata usa \"collega sync\" con la stessa password, questo token e questo ID.",
+  sync_fail:"Operazione fallita: controlla il token e la connessione.",
+  sync_disabled_msg:"Sync disattivata. I dati restano su questo dispositivo.",
+  nav_reg:"Registro", s_title:"Impostazioni",
+  s_sync:"Sincronizzazione…", s_export:"Esporta dati (file cifrato)", s_import:"Importa dati"
+},
+de:{
+  title:"Studio Register", title_a:"Studio", title_b:"Register",
+  gate_create1:"Passwort erstellen", gate_create2:"Passwort wiederholen",
+  gate_btn_create:"Register erstellen", gate_pw:"Passwort", gate_btn_enter:"Anmelden",
+  gate_hint_first:"Erste Öffnung auf diesem Gerät. Wähle ein Passwort: die Daten werden damit verschlüsselt. Ohne Passwort sind die Daten nicht wiederherstellbar.",
+  gate_link:"Ich habe bereits ein Register auf einem anderen Gerät (Sync verbinden)",
+  gate_token:"GitHub Token", gate_gist:"Sync ID (Gist ID)",
+  gate_err_short:"Passwort zu kurz (mindestens 4 Zeichen).",
+  gate_err_match:"Die Passwörter stimmen nicht überein.",
+  gate_err_wrong:"Falsches Passwort.",
+  gate_err_link:"Verbindung fehlgeschlagen: Token, ID und Passwort prüfen.",
+  loading:"Wird geladen…",
+  btn_sync:"Sync", btn_export:"Export", btn_import:"Import", btn_lock:"Sperren",
+  sync_off:"Sync: inaktiv · Daten nur auf diesem Gerät",
+  sync_on:"Sync: aktiv · letzte Aktualisierung ", sync_err:"Sync: Verbindungsfehler · lokal gespeichert",
+  card_op:"<b>Betriebs</b>ausgaben", card_az:"<b>Firmen</b>ausgaben",
+  op:"Betrieb", az:"Firma",
+  accrued:"Aufgelaufen", paid:"Ausgezahlt", due:"Offen",
+  sec_projects:"Projekte", sec_payouts:"Ausgaben",
+  new_project:"+ Neues Projekt", new_payout:"+ Neue Ausgabe",
+  add_payment:"+ Zahlung hinzufügen", del_project:"Projekt löschen",
+  empty_projects:"Keine Projekte. Schreib im Chat, um zu beginnen.",
+  empty_payouts:"Keine Ausgaben erfasst.", no_payments:"Keine Zahlungen",
+  pays:"Zahl.", ref:"Ref.",
+  help:'Schreib im Chat ganz natürlich, auf Deutsch oder Italienisch. Beispiele: <code>Maria Anzahlung 100 Euro heute bar</code> · <code>Maria hat die erste Sitzung 300 bezahlt am 12.07.26</code> · <code>heute habe ich 500 von Maria an Betrieb gegeben</code>. Vor dem Speichern kommt eine Bestätigung.',
+  chat_placeholder:"Hier schreiben… z.B.: Maria Anzahlung 150 heute bar", chat_send:"Senden",
+  bot_notunderstood:"Das habe ich nicht verstanden. Versuch: <i>Name Anzahlung 100 heute bar</i>, oder <i>habe 500 von Name an Betrieb gegeben</i>.",
+  bot_cancelled:"Abgebrochen.", bot_missing:"Kunde oder Betrag fehlt.", bot_missing_amount:"Der Betrag fehlt.",
+  bot_registered:"Erfasst", bot_payout_saved:"Ausgabe erfasst", bot_towards:"an",
+  confirm_payment:"Kundenzahlung bestätigen", confirm_payout:"Ausgabe bestätigen",
+  f_client:"Kunde", f_type:"Art", f_amount:"Betrag €", f_date:"Datum",
+  f_assigned:"Zugeordnet an", f_method:"Zahlungsart", f_dest:"Empfänger", f_ref:"Kundenref. (opt.)",
+  btn_confirm:"Bestätigen", btn_cancel:"Abbrechen", btn_save:"Speichern",
+  m_new_project:"Neues Projekt", m_new_payment:"Neue Zahlung", m_new_payout:"Neue Ausgabe",
+  t_deposit:"Anzahlung", t_session:"Sitzung", t_payment:"Zahlung",
+  ord:["","Erste","Zweite","Dritte","Vierte","Fünfte"],
+  m_cash:"Bar", m_transfer:"Überweisung", m_card:"Karte", m_paypal:"PayPal",
+  del_pay_q:"Diese Zahlung löschen?", del_proj_q:"Projekt und alle Zahlungen löschen?",
+  del_out_q:"Diese Ausgabe löschen?",
+  exp_ok:"Daten exportiert (verschlüsselte Datei).", imp_ok:"Daten erfolgreich importiert.",
+  imp_pw:"Passwort der Importdatei:", imp_q:"Aktuelle Daten mit der Importdatei ersetzen?",
+  imp_fail:"Import fehlgeschlagen: falsches Passwort oder ungültige Datei.",
+  sync_title:"Synchronisierung zwischen Geräten",
+  sync_note:'Die Synchronisierung nutzt deinen privaten GitHub Speicher (Gist). Die Daten sind immer verschlüsselt: auf GitHub ist nur unlesbarer Text sichtbar. Du brauchst ein Token: auf GitHub unter <b>Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token</b>, nur <b>gist</b> ankreuzen, erstellen und kopieren.',
+  sync_token:"GitHub Token", sync_gist:"Sync ID (Gist ID)",
+  sync_create:"Neuen Sync Speicher erstellen", sync_connect:"Bestehenden verbinden",
+  sync_disable:"Sync deaktivieren", sync_close:"Schließen",
+  sync_active:"Sync aktiv. Das ist deine Speicher ID, du brauchst sie für die anderen Geräte:",
+  sync_created:"Sync Speicher erstellt. Auf jedem anderen Gerät: Datei öffnen, beim ersten Bildschirm \"Sync verbinden\" mit demselben Passwort, diesem Token und dieser ID.",
+  sync_fail:"Fehlgeschlagen: Token und Verbindung prüfen.",
+  sync_disabled_msg:"Sync deaktiviert. Die Daten bleiben auf diesem Gerät.",
+  nav_reg:"Register", s_title:"Einstellungen",
+  s_sync:"Synchronisierung…", s_export:"Daten exportieren (verschlüsselt)", s_import:"Daten importieren"
+}};
+let lang = "it";
+try{ lang = localStorage.getItem("rst_lang") || "it"; }catch(e){}
+const t = k => (I[lang] && I[lang][k]) || I.it[k] || k;
+function setLang(l){
+  lang = l;
+  try{ localStorage.setItem("rst_lang", l); }catch(e){}
+  applyLang();
+}
+function applyLang(){
+  try{
+    const li=document.getElementById("lang-it"), ld=document.getElementById("lang-de");
+    if(li) li.classList.toggle("on", lang==="it");
+    if(ld) ld.classList.toggle("on", lang==="de");
+    document.querySelectorAll("[data-i]").forEach(el=>{ el.innerHTML = t(el.getAttribute("data-i")); });
+    const ci=document.getElementById("chatinput"); if(ci) ci.placeholder = t("chat_placeholder");
+    const hb=document.getElementById("helpbox"); if(hb) hb.innerHTML = t("help");
+    const appEl=document.getElementById("app");
+    if(appEl && appEl.style.display === "block") renderAll();
+    const gateEl=document.getElementById("gate");
+    if(gateEl && gateEl.style.display !== "none") initGate();
+  }catch(e){ console.error("applyLang", e); }
+}
+
+/* =================================================================
+   CIFRATURA (AES-GCM, chiave da password via PBKDF2)
+================================================================= */
+const STORE_KEY="rst_data_v2", CHECK_KEY="rst_check_v2", CFG_KEY="rst_cfg_v2";
+let cryptoKey=null, saltB64=null;
+let state = { projects: [], payouts: [], settings: { shareOp: 0.5, shareAz: 0.5 } };
+let syncCfg = null; /* {token, gistId} */
+
+const enc=new TextEncoder(), dec=new TextDecoder();
+const b64=a=>btoa(String.fromCharCode(...new Uint8Array(a)));
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function deriveKey(pass,salt){
+  const base=await crypto.subtle.importKey("raw",enc.encode(pass),"PBKDF2",false,["deriveKey"]);
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:150000,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+}
+async function encryptJSON(obj){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:"AES-GCM",iv},cryptoKey,enc.encode(JSON.stringify(obj)));
+  return JSON.stringify({salt:saltB64,iv:b64(iv),ct:b64(ct)});
+}
+async function decryptJSON(str,key){
+  const p=JSON.parse(str);
+  const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(p.iv)},key,unb64(p.ct));
+  return JSON.parse(dec.decode(pt));
+}
+
+let mem={};
+function lsGet(k){ try{return localStorage.getItem(k);}catch(e){return mem[k]||null;} }
+function lsSet(k,v){ try{localStorage.setItem(k,v);}catch(e){mem[k]=v;} }
+function lsDel(k){ try{localStorage.removeItem(k);}catch(e){delete mem[k];} }
+
+/* =================================================================
+   SYNC via GitHub Gist (dati sempre cifrati)
+================================================================= */
+const GIST_FILE="registro.rst";
+function ghHeaders(token){ return {"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json","Content-Type":"application/json"}; }
+async function gistRead(cfg){
+  const r=await fetch("https://api.github.com/gists/"+cfg.gistId,{headers:ghHeaders(cfg.token)});
+  if(!r.ok) throw new Error("gist read "+r.status);
+  const g=await r.json();
+  return g.files && g.files[GIST_FILE] ? g.files[GIST_FILE].content : null;
+}
+async function gistWrite(cfg,content){
+  const r=await fetch("https://api.github.com/gists/"+cfg.gistId,{
+    method:"PATCH",headers:ghHeaders(cfg.token),
+    body:JSON.stringify({files:{[GIST_FILE]:{content}}})});
+  if(!r.ok) throw new Error("gist write "+r.status);
+}
+async function gistCreate(token,content){
+  const r=await fetch("https://api.github.com/gists",{
+    method:"POST",headers:ghHeaders(token),
+    body:JSON.stringify({description:"backup",public:false,files:{[GIST_FILE]:{content}}})});
+  if(!r.ok) throw new Error("gist create "+r.status);
+  return (await r.json()).id;
+}
+
+let lastRemote=null;
+function setSyncStatus(mode){
+  const el=document.getElementById("syncstatus");
+  if(mode==="on"){ el.className="on"; el.textContent=t("sync_on")+new Date().toLocaleTimeString(); }
+  else if(mode==="err"){ el.className="err"; el.textContent=t("sync_err"); }
+  else { el.className=""; el.textContent=t("sync_off"); }
+}
+async function persist(){
+  if(!cryptoKey) return;
+  const blob=await encryptJSON(state);
+  lsSet(STORE_KEY,blob);
+  if(syncCfg){
+    try{ await gistWrite(syncCfg,blob); lastRemote=blob; setSyncStatus("on"); }
+    catch(e){ setSyncStatus("err"); }
+  }
+}
+let syncTimer=null;
+function startSync(){
+  if(syncTimer||!syncCfg) return;
+  syncTimer=setInterval(pullRemote,15000);
+}
+async function pullRemote(){
+  if(!syncCfg||!cryptoKey) return;
+  if(document.getElementById("confirmbox").innerHTML.trim()) return;
+  try{
+    const raw=await gistRead(syncCfg);
+    if(!raw||raw===lastRemote) { setSyncStatus("on"); return; }
+    const fresh=await decryptJSON(raw,cryptoKey);
+    lastRemote=raw;
+    if(JSON.stringify(fresh)!==JSON.stringify(state)){
+      state=fresh; lsSet(STORE_KEY,raw); renderAll();
+    }
+    setSyncStatus("on");
+  }catch(e){ setSyncStatus("err"); }
+}
+
+/* =================================================================
+   GATE
+================================================================= */
+async function initGate(){
+  const form=document.getElementById("gate-form");
+  const hint=document.getElementById("gate-hint");
+  if(!form) return;
+  const errEl=document.getElementById("gate-err"); if(errEl) errEl.textContent="";
+  let existing=null;
+  try{ existing=lsGet(CHECK_KEY); }catch(e){ existing=null; }
+  if(!existing){
+    form.innerHTML=`
+      <input type="password" id="pw1" placeholder="${t("gate_create1")}">
+      <input type="password" id="pw2" placeholder="${t("gate_create2")}">
+      <button class="main" onclick="setupPassword()">${t("gate_btn_create")}</button>
+      <details>
+        <summary>${t("gate_link")}</summary>
+        <input id="link-token" placeholder="${t("gate_token")}">
+        <input id="link-gist" placeholder="${t("gate_gist")}">
+      </details>`;
+    if(hint) hint.textContent=t("gate_hint_first");
+  }else{
+    form.innerHTML=`
+      <input type="password" id="pw1" placeholder="${t("gate_pw")}" onkeydown="if(event.key==='Enter')unlock()">
+      <button class="main" onclick="unlock()">${t("gate_btn_enter")}</button>`;
+    if(hint) hint.textContent="";
+  }
+}
+async function setupPassword(){
+  const p1=document.getElementById("pw1").value, p2=document.getElementById("pw2").value;
+  const err=document.getElementById("gate-err");
+  const linkToken=(document.getElementById("link-token")||{}).value?.trim()||"";
+  const linkGist=(document.getElementById("link-gist")||{}).value?.trim()||"";
+  if(p1.length<4){ err.textContent=t("gate_err_short"); return; }
+  if(p1!==p2){ err.textContent=t("gate_err_match"); return; }
+  if(linkToken&&linkGist){
+    /* collega a un registro esistente: prendi il salt dai dati remoti */
+    try{
+      const raw=await gistRead({token:linkToken,gistId:linkGist});
+      if(!raw) throw new Error("empty");
+      const meta=JSON.parse(raw);
+      saltB64=meta.salt;
+      const key=await deriveKey(p1,unb64(meta.salt));
+      state=await decryptJSON(raw,key);
+      cryptoKey=key;
+      syncCfg={token:linkToken,gistId:linkGist};
+      lastRemote=raw;
+      lsSet(CHECK_KEY,await encryptJSON({ok:true}));
+      lsSet(CFG_KEY,await encryptJSON(syncCfg));
+      lsSet(STORE_KEY,raw);
+      enterApp(); return;
+    }catch(e){ err.textContent=t("gate_err_link"); return; }
+  }
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  saltB64=b64(salt);
+  cryptoKey=await deriveKey(p1,salt);
+  lsSet(CHECK_KEY,await encryptJSON({ok:true}));
+  await persist();
+  enterApp();
+}
+async function unlock(){
+  const p=document.getElementById("pw1").value;
+  const err=document.getElementById("gate-err");
+  try{
+    const checkRaw=lsGet(CHECK_KEY);
+    const check=JSON.parse(checkRaw);
+    saltB64=check.salt;
+    const key=await deriveKey(p,unb64(check.salt));
+    await decryptJSON(checkRaw,key);
+    cryptoKey=key;
+    const cfgRaw=lsGet(CFG_KEY);
+    if(cfgRaw){ try{ syncCfg=await decryptJSON(cfgRaw,key); }catch(e){} }
+    const raw=lsGet(STORE_KEY);
+    if(raw) state=await decryptJSON(raw,key);
+    enterApp();
+    if(syncCfg) pullRemote();
+  }catch(e){ err.textContent=t("gate_err_wrong"); }
+}
+function enterApp(){
+  document.getElementById("gate").style.display="none";
+  document.getElementById("app").style.display="block";
+  document.getElementById("nav").style.display="flex";
+  setSyncStatus(syncCfg?"on":"off");
+  renderAll();
+  applyLangStatic();
+  document.getElementById("chatinput").focus();
+  startSync();
+}
+function switchView(v){
+  document.getElementById("view-chat").classList.toggle("on", v==="chat");
+  document.getElementById("view-reg").classList.toggle("on", v==="reg");
+  document.getElementById("nav-chat").classList.toggle("on", v==="chat");
+  document.getElementById("nav-reg").classList.toggle("on", v==="reg");
+  document.body.classList.toggle("reg-view", v==="reg");
+  if(v==="chat") document.getElementById("chatinput").focus();
+}
+function applyLangStatic(){
+  document.querySelectorAll("[data-i]").forEach(el=>{ el.innerHTML=t(el.getAttribute("data-i")); });
+  document.getElementById("chatinput").placeholder=t("chat_placeholder");
+  document.getElementById("helpbox").innerHTML=t("help");
+}
+function lockApp(){ location.reload(); }
+
+/* =================================================================
+   CALCOLI + RENDER
+================================================================= */
+const euro=n=>n.toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
+function typeLabel(x){
+  if(x.t==="deposit") return t("t_deposit");
+  if(x.t==="session") return (x.n?t("ord")[x.n]+" ":"")+t("t_session");
+  return x.raw||t("t_payment");
+}
+function methodLabel(m){
+  if(!m) return "";
+  const map={cash:"m_cash",transfer:"m_transfer",card:"m_card",paypal:"m_paypal"};
+  return map[m]?t(map[m]):m;
+}
+function totals(artist){
+  const share=artist==="OP"?state.settings.shareOp:state.settings.shareAz;
+  let accrued=0;
+  state.projects.filter(p=>p.artist===artist).forEach(p=>p.payments.forEach(x=>accrued+=x.amount*share));
+  let paid=0;
+  state.payouts.filter(o=>o.artist===artist).forEach(o=>paid+=o.amount);
+  return {accrued,paid,due:accrued-paid};
+}
+function renderAll(){ renderDash(); renderMini(); renderProjects(); renderPayouts(); }
+function renderMini(){
+  const op=totals("OP"), az=totals("AZ");
+  document.getElementById("minidash").innerHTML=`
+    <div class="mcell mop"><div class="v">${euro(op.due)}</div><div class="k"><b>${t("op")}</b> · ${t("due")}</div></div>
+    <div class="mcell maz"><div class="v">${euro(az.due)}</div><div class="k"><b>${t("az")}</b> · ${t("due")}</div></div>`;
+}
+function renderDash(){
+  const op=totals("OP"), az=totals("AZ");
+  const cell=(v,c,l)=>`<div class="cell"><div class="n ${c}">${euro(v)}</div><div class="t">${l}</div></div>`;
+  document.getElementById("dash").innerHTML=`
+    <div class="card"><div class="lbl">${t("card_op")}</div><div class="rows3">
+      ${cell(op.accrued,"gold",t("accrued"))}${cell(op.paid,"green",t("paid"))}${cell(op.due,"due",t("due"))}
+    </div></div>
+    <div class="card"><div class="lbl">${t("card_az")}</div><div class="rows3">
+      ${cell(az.accrued,"gold",t("accrued"))}${cell(az.paid,"green",t("paid"))}${cell(az.due,"due",t("due"))}
+    </div></div>`;
+}
+function renderProjects(){
+  const box=document.getElementById("projects");
+  if(!state.projects.length){ box.innerHTML=`<div class="empty">${t("empty_projects")}</div>`; return; }
+  box.innerHTML=state.projects.map(p=>{
+    const tot=p.payments.reduce((s,x)=>s+x.amount,0);
+    const rows=p.payments.map((x,i)=>`
+      <div class="pay-row">
+        <span class="d">${x.date}</span>
+        <span class="ty">${typeLabel(x)}</span>
+        <span class="am">${euro(x.amount)}</span>
+        <span class="me">${methodLabel(x.method)}</span>
+        <button class="del" onclick="delPayment('${p.id}',${i});event.stopPropagation()">×</button>
+      </div>`).join("");
+    return `
+      <div class="proj" id="proj-${p.id}">
+        <div class="proj-head" onclick="toggleProj('${p.id}')">
+          <span class="badge ${p.artist==="OP"?"op":"az"}">${p.artist==="OP"?t("op"):t("az")}</span>
+          <span class="proj-name">${escapeHtml(p.client)}</span>
+          <span class="proj-sum">${p.payments.length} ${t("pays")} · <b>${euro(tot)}</b></span>
+        </div>
+        <div class="proj-body">
+          ${rows||`<div class="empty">${t("no_payments")}</div>`}
+          <button class="mini" onclick="openModal('payment','${p.id}')">${t("add_payment")}</button>
+          <button class="mini" onclick="delProject('${p.id}')" style="color:var(--red);border-color:var(--red)">${t("del_project")}</button>
+        </div>
+      </div>`;
+  }).join("");
+}
+function toggleProj(id){ document.getElementById("proj-"+id).classList.toggle("open"); }
+function renderPayouts(){
+  const box=document.getElementById("payouts");
+  if(!state.payouts.length){ box.innerHTML=`<div class="empty">${t("empty_payouts")}</div>`; return; }
+  box.innerHTML=state.payouts.map((o,i)=>`
+    <div class="out-row">
+      <span class="d">${o.date}</span>
+      <span class="who"><span class="badge ${o.artist==="OP"?"op":"az"}">${o.artist==="OP"?t("op"):t("az")}</span></span>
+      <span class="am">− ${euro(o.amount)}</span>
+      <span class="me">${o.client?(t("ref")+" "+escapeHtml(o.client)+" · "):""}${methodLabel(o.method)}</span>
+      <button class="del" onclick="delPayout(${i})">×</button>
+    </div>`).join("");
+}
+function escapeHtml(s){ return (s||"").replace(/[<>&"]/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c])); }
+
+/* =================================================================
+   AZIONI
+================================================================= */
+const uid=()=>Math.random().toString(36).slice(2,9);
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+function findProject(client,artist){
+  const c=client.toLowerCase();
+  return state.projects.find(p=>p.client.toLowerCase()===c&&(!artist||p.artist===artist))
+      || state.projects.find(p=>p.client.toLowerCase()===c);
+}
+async function addPayment(client,artist,type,amount,date,method){
+  let p=findProject(client,artist);
+  if(!p){ p={id:uid(),client:cap(client),artist:artist||"OP",payments:[]}; state.projects.push(p); }
+  p.payments.push({...type,amount,date,method});
+  await persist(); renderAll();
+}
+async function addPayout(artist,amount,date,method,client){
+  state.payouts.push({id:uid(),artist,amount,date,method,client:client||""});
+  await persist(); renderAll();
+}
+async function delPayment(pid,idx){
+  const p=state.projects.find(x=>x.id===pid);
+  if(p&&confirm(t("del_pay_q"))){ p.payments.splice(idx,1); await persist(); renderAll(); }
+}
+async function delProject(pid){
+  if(confirm(t("del_proj_q"))){ state.projects=state.projects.filter(x=>x.id!==pid); await persist(); renderAll(); }
+}
+async function delPayout(i){
+  if(confirm(t("del_out_q"))){ state.payouts.splice(i,1); await persist(); renderAll(); }
+}
+
+/* =================================================================
+   PARSER (italiano + tedesco)
+================================================================= */
+const STOP=new Set(["ha","oggi","ieri","euro","eur","di","da","a","ad","il","la","lo","in","per","con","e","ho","abbiamo","dato","data","girato","pagato","pagata","lasciato","versato","consegnato","acconto","anticipo","caparra","seduta","sessione","seance","prima","seconda","terza","quarta","quinta","tatuaggio","contanti","cash","bonifico","carta","paypal","x","y","operative","operativa","aziendali","aziendale","spese","fatto","riceve","preso","suo","sua","del","della","al","alla",
+"hat","habe","haben","heute","gestern","an","von","für","und","der","die","das","den","dem","ich","wir","bar","bargeld","überweisung","karte","anzahlung","sitzung","termin","session","erste","zweite","dritte","vierte","fünfte","gegeben","gezahlt","bezahlt","überwiesen","ausgezahlt","betrieb","betriebs","firma","firmen","ausgabe","am","um","mit","hab"]);
+const ORD_IT={prima:1,seconda:2,terza:3,quarta:4,quinta:5};
+const ORD_DE={erste:1,zweite:2,dritte:3,vierte:4,"fünfte":5};
+
+function parseDate(text){
+  const tl=text.toLowerCase(); const today=new Date();
+  const fmt=d=>String(d.getDate()).padStart(2,"0")+"."+String(d.getMonth()+1).padStart(2,"0")+"."+d.getFullYear();
+  const m=tl.match(/(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})/);
+  if(m){ let y=m[3].length===2?"20"+m[3]:m[3]; return String(m[1]).padStart(2,"0")+"."+String(m[2]).padStart(2,"0")+"."+y; }
+  if(/\bieri\b|\bgestern\b/.test(tl)){ const d=new Date(today); d.setDate(d.getDate()-1); return fmt(d); }
+  return fmt(today);
+}
+function parseAmount(text){
+  const tl=text.replace(/(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})/g,"");
+  const withEuro=tl.match(/(\d+(?:[.,]\d{1,2})?)\s*(?:€|euro|eur)\b/i);
+  if(withEuro) return parseFloat(withEuro[1].replace(",","."));
+  const nums=[...tl.matchAll(/\b(\d+(?:[.,]\d{1,2})?)\b/g)].map(m=>parseFloat(m[1].replace(",",".")));
+  return nums.length?Math.max(...nums):null;
+}
+function parseMethod(text){
+  const tl=text.toLowerCase();
+  if(/contant|cash|\bbar\b|bargeld/.test(tl)) return "cash";
+  if(/bonific|überweisung|überwiesen/.test(tl)) return "transfer";
+  if(/paypal/.test(tl)) return "paypal";
+  if(/cart[ae]|karte/.test(tl)) return "card";
+  return "";
+}
+function parseArtist(text){
+  const tl=" "+text.toLowerCase()+" ";
+  if(/operativ|betrieb/.test(tl)||/ x /.test(tl)||/ an x | a x /.test(tl)) return "OP";
+  if(/aziendal|firmen|firma/.test(tl)||/ y /.test(tl)||/ an y | a y /.test(tl)) return "AZ";
+  return null;
+}
+function parseClient(text){
+  const words=text.replace(/[.,;!?]/g," ").split(/\s+/).filter(Boolean);
+  for(const w of words){
+    const c=w.toLowerCase();
+    if(state.projects.some(p=>p.client.toLowerCase()===c)) return cap(c);
+  }
+  for(let i=0;i<words.length-1;i++){
+    const k=words[i].toLowerCase();
+    if(k==="di"||k==="von"){
+      const cand=words[i+1].toLowerCase();
+      if(!STOP.has(cand)&&!/^\d/.test(cand)) return cap(cand);
+    }
+  }
+  for(const w of words){
+    const c=w.toLowerCase();
+    if(!STOP.has(c)&&!/^\d/.test(c)&&c.length>1) return cap(c);
+  }
+  return "";
+}
+function parseMessage(text){
+  const tl=text.toLowerCase();
+  const amount=parseAmount(text), date=parseDate(text);
+  const method=parseMethod(text), artist=parseArtist(text), client=parseClient(text);
+  const isPayout=/\b(ho|abbiamo)\s+(dato|girato|pagato|consegnato)\b/.test(tl)
+    || /girat[oa]\b/.test(tl)
+    || (/\b(habe|haben|hab)\b/.test(tl)&&/\b(gegeben|gezahlt|bezahlt|überwiesen|ausgezahlt)\b/.test(tl))
+    || /\bausgezahlt\b/.test(tl);
+  const isDeposit=/acconto|anticipo|caparra|anzahlung/.test(tl);
+  const isSession=/seduta|sessione|seance|sitzung|termin(?!e)/.test(tl);
+  if(isPayout&&artist) return {kind:"payout",artist,amount,date,method,client};
+  if(isDeposit) return {kind:"payment",type:{t:"deposit"},client,artist,amount,date,method};
+  if(isSession){
+    let n=0;
+    for(const[k,v]of Object.entries(ORD_IT)) if(tl.includes(k)) n=v;
+    for(const[k,v]of Object.entries(ORD_DE)) if(tl.includes(k)) n=v;
+    return {kind:"payment",type:{t:"session",n},client,artist,amount,date,method};
+  }
+  if(amount&&client) return {kind:"payment",type:{t:"payment"},client,artist,amount,date,method};
+  return null;
+}
+
+/* =================================================================
+   CHAT
+================================================================= */
+function chatMsg(html,cls){
+  const log=document.getElementById("chatlog");
+  const d=document.createElement("div");
+  d.className="msg "+cls; d.innerHTML=html;
+  log.appendChild(d);
+  d.scrollIntoView({behavior:"smooth",block:"end"});
+}
+function handleChat(){
+  const inp=document.getElementById("chatinput");
+  const text=inp.value.trim();
+  if(!text) return;
+  inp.value="";
+  chatMsg(escapeHtml(text),"me");
+  const parsed=parseMessage(text);
+  if(!parsed||!parsed.amount){ chatMsg(t("bot_notunderstood"),"bot warn"); return; }
+  showConfirm(parsed);
+}
+document.getElementById("chatinput").addEventListener("keydown",e=>{ if(e.key==="Enter") handleChat(); });
+
+function typeSelect(id,sel){
+  return `<select id="${id}">
+    <option value="deposit" ${sel==="deposit"?"selected":""}>${t("t_deposit")}</option>
+    <option value="session" ${sel==="session"?"selected":""}>${t("t_session")}</option>
+    <option value="payment" ${sel==="payment"?"selected":""}>${t("t_payment")}</option>
+  </select>`;
+}
+function artistSelect(id,sel){
+  return `<select id="${id}">
+    <option value="OP" ${sel==="OP"?"selected":""}>${t("op")}</option>
+    <option value="AZ" ${sel==="AZ"?"selected":""}>${t("az")}</option>
+  </select>`;
+}
+let pendingSessionN=0;
+function showConfirm(p){
+  const box=document.getElementById("confirmbox");
+  if(p.kind==="payout"){
+    box.innerHTML=`
+    <div class="confirm">
+      <div class="ct">${t("confirm_payout")}</div>
+      <div class="cgrid">
+        <div><label>${t("f_dest")}</label>${artistSelect("cf-artist",p.artist)}</div>
+        <div><label>${t("f_amount")}</label><input id="cf-amount" type="number" step="0.01" value="${p.amount}"></div>
+        <div><label>${t("f_date")}</label><input id="cf-date" value="${p.date}"></div>
+        <div><label>${t("f_method")}</label><input id="cf-method" value="${methodLabel(p.method)}" data-code="${p.method}"></div>
+        <div><label>${t("f_ref")}</label><input id="cf-client" value="${p.client||""}"></div>
+      </div>
+      <div class="cbtns">
+        <button class="yes" onclick="confirmPayout()">${t("btn_confirm")}</button>
+        <button class="no" onclick="cancelConfirm()">${t("btn_cancel")}</button>
+      </div>
+    </div>`;
+  }else{
+    pendingSessionN=p.type.n||0;
+    box.innerHTML=`
+    <div class="confirm">
+      <div class="ct">${t("confirm_payment")}</div>
+      <div class="cgrid">
+        <div><label>${t("f_client")}</label><input id="cf-client" value="${p.client||""}"></div>
+        <div><label>${t("f_type")}</label>${typeSelect("cf-type",p.type.t)}</div>
+        <div><label>${t("f_amount")}</label><input id="cf-amount" type="number" step="0.01" value="${p.amount}"></div>
+        <div><label>${t("f_date")}</label><input id="cf-date" value="${p.date}"></div>
+        <div><label>${t("f_assigned")}</label>${artistSelect("cf-artist",p.artist||"OP")}</div>
+        <div><label>${t("f_method")}</label><input id="cf-method" value="${methodLabel(p.method)}" data-code="${p.method}"></div>
+      </div>
+      <div class="cbtns">
+        <button class="yes" onclick="confirmPayment()">${t("btn_confirm")}</button>
+        <button class="no" onclick="cancelConfirm()">${t("btn_cancel")}</button>
+      </div>
+    </div>`;
+  }
+  box.scrollIntoView({behavior:"smooth",block:"end"});
+}
+function readMethodField(id){
+  const el=document.getElementById(id);
+  const typed=el.value.trim();
+  const code=el.getAttribute("data-code");
+  if(code&&methodLabel(code)===typed) return code;
+  const norm=parseMethod(typed);
+  return norm||typed;
+}
+function cancelConfirm(){ document.getElementById("confirmbox").innerHTML=""; chatMsg(t("bot_cancelled"),"bot"); }
+async function confirmPayment(){
+  const client=document.getElementById("cf-client").value.trim();
+  const ty=document.getElementById("cf-type").value;
+  const amount=parseFloat(document.getElementById("cf-amount").value);
+  const date=document.getElementById("cf-date").value.trim();
+  const artist=document.getElementById("cf-artist").value;
+  const method=readMethodField("cf-method");
+  if(!client||!amount){ chatMsg(t("bot_missing"),"bot warn"); return; }
+  const type=ty==="session"?{t:"session",n:pendingSessionN}:{t:ty};
+  await addPayment(client,artist,type,amount,date,method);
+  document.getElementById("confirmbox").innerHTML="";
+  chatMsg(`${t("bot_registered")}: <b>${escapeHtml(client)}</b> · ${typeLabel(type)} · ${euro(amount)} · ${date}${method?" · "+methodLabel(method):""}.`,"bot ok");
+}
+async function confirmPayout(){
+  const artist=document.getElementById("cf-artist").value;
+  const amount=parseFloat(document.getElementById("cf-amount").value);
+  const date=document.getElementById("cf-date").value.trim();
+  const method=readMethodField("cf-method");
+  const client=document.getElementById("cf-client").value.trim();
+  if(!amount){ chatMsg(t("bot_missing_amount"),"bot warn"); return; }
+  await addPayout(artist,amount,date,method,client);
+  document.getElementById("confirmbox").innerHTML="";
+  chatMsg(`${t("bot_payout_saved")}: ${euro(amount)} ${t("bot_towards")} <b>${artist==="OP"?t("op"):t("az")}</b> · ${date}${method?" · "+methodLabel(method):""}.`,"bot ok");
+}
+
+/* =================================================================
+   MODALI
+================================================================= */
+function openModal(kind,pid){
+  const m=document.getElementById("modal"), box=document.getElementById("mbox");
+  const today=parseDate("");
+  if(kind==="project"){
+    box.innerHTML=`<h3>${t("m_new_project")}</h3>
+      <div class="mrow"><label>${t("f_client")}</label><input id="m-client"></div>
+      <div class="mrow"><label>${t("f_assigned")}</label>${artistSelect("m-artist","OP")}</div>
+      <div class="mbtns"><button class="cancel" onclick="closeModal()">${t("btn_cancel")}</button>
+      <button class="save" onclick="saveProject()">${t("btn_save")}</button></div>`;
+  }else if(kind==="payment"){
+    box.innerHTML=`<h3>${t("m_new_payment")}</h3>
+      <input type="hidden" id="m-pid" value="${pid}">
+      <div class="mrow"><label>${t("f_type")}</label>${typeSelect("m-type","session")}</div>
+      <div class="mrow"><label>${t("f_amount")}</label><input id="m-amount" type="number" step="0.01"></div>
+      <div class="mrow"><label>${t("f_date")}</label><input id="m-date" value="${today}"></div>
+      <div class="mrow"><label>${t("f_method")}</label><input id="m-method"></div>
+      <div class="mbtns"><button class="cancel" onclick="closeModal()">${t("btn_cancel")}</button>
+      <button class="save" onclick="savePayment()">${t("btn_save")}</button></div>`;
+  }else if(kind==="payout"){
+    box.innerHTML=`<h3>${t("m_new_payout")}</h3>
+      <div class="mrow"><label>${t("f_dest")}</label>${artistSelect("m-artist","OP")}</div>
+      <div class="mrow"><label>${t("f_amount")}</label><input id="m-amount" type="number" step="0.01"></div>
+      <div class="mrow"><label>${t("f_date")}</label><input id="m-date" value="${today}"></div>
+      <div class="mrow"><label>${t("f_method")}</label><input id="m-method"></div>
+      <div class="mrow"><label>${t("f_ref")}</label><input id="m-client"></div>
+      <div class="mbtns"><button class="cancel" onclick="closeModal()">${t("btn_cancel")}</button>
+      <button class="save" onclick="savePayout()">${t("btn_save")}</button></div>`;
+  }else if(kind==="settings"){
+    box.innerHTML=`<h3>${t("s_title")}</h3>
+      <div class="mbtns" style="flex-direction:column;align-items:stretch;justify-content:flex-start">
+        <button class="save" onclick="closeModal();openModal('sync')">${t("s_sync")}</button>
+        <button class="cancel" onclick="closeModal();exportData()">${t("s_export")}</button>
+        <button class="cancel" onclick="closeModal();document.getElementById('importfile').click()">${t("s_import")}</button>
+        <button class="cancel" onclick="closeModal()">${t("sync_close")}</button>
+      </div>`;
+  }else if(kind==="sync"){
+    const active=!!syncCfg;
+    box.innerHTML=`<h3>${t("sync_title")}</h3>
+      <div class="note">${t("sync_note")}</div>
+      ${active?`<div class="note">${t("sync_active")}<br><code>${syncCfg.gistId}</code></div>`:""}
+      <div class="mrow"><label>${t("sync_token")}</label><input id="s-token" value="${active?syncCfg.token:""}"></div>
+      <div class="mrow"><label>${t("sync_gist")}</label><input id="s-gist" value="${active?syncCfg.gistId:""}"></div>
+      <div class="mbtns">
+        ${active?`<button class="danger" onclick="disableSync()">${t("sync_disable")}</button>`:""}
+        <button class="cancel" onclick="closeModal()">${t("sync_close")}</button>
+        <button class="save" onclick="connectSync()">${t("sync_connect")}</button>
+        <button class="save" onclick="createSync()">${t("sync_create")}</button>
+      </div>
+      <div class="err" id="s-err" style="color:var(--red);font-size:13px;margin-top:10px"></div>`;
+  }
+  m.style.display="flex";
+}
+function closeModal(){ document.getElementById("modal").style.display="none"; }
+async function saveProject(){
+  const c=document.getElementById("m-client").value.trim();
+  if(!c) return;
+  state.projects.push({id:uid(),client:cap(c),artist:document.getElementById("m-artist").value,payments:[]});
+  await persist(); renderAll(); closeModal();
+}
+async function savePayment(){
+  const pid=document.getElementById("m-pid").value;
+  const p=state.projects.find(x=>x.id===pid);
+  const amount=parseFloat(document.getElementById("m-amount").value);
+  if(!p||!amount) return;
+  const ty=document.getElementById("m-type").value;
+  p.payments.push({t:ty,n:0,amount,date:document.getElementById("m-date").value.trim(),
+    method:parseMethod(document.getElementById("m-method").value)||document.getElementById("m-method").value.trim()});
+  await persist(); renderAll(); closeModal();
+  const el=document.getElementById("proj-"+pid); if(el) el.classList.add("open");
+}
+async function savePayout(){
+  const amount=parseFloat(document.getElementById("m-amount").value);
+  if(!amount) return;
+  await addPayout(document.getElementById("m-artist").value,amount,
+    document.getElementById("m-date").value.trim(),
+    parseMethod(document.getElementById("m-method").value)||document.getElementById("m-method").value.trim(),
+    document.getElementById("m-client").value.trim());
+  closeModal();
+}
+document.getElementById("modal").addEventListener("click",e=>{ if(e.target.id==="modal") closeModal(); });
+
+/* sync setup */
+async function createSync(){
+  const token=document.getElementById("s-token").value.trim();
+  const errEl=document.getElementById("s-err");
+  if(!token){ errEl.textContent=t("sync_fail"); return; }
+  try{
+    const blob=await encryptJSON(state);
+    const id=await gistCreate(token,blob);
+    syncCfg={token,gistId:id};
+    lastRemote=blob;
+    lsSet(CFG_KEY,await encryptJSON(syncCfg));
+    lsSet(STORE_KEY,blob);
+    setSyncStatus("on"); startSync();
+    closeModal();
+    chatMsg(t("sync_created")+"<br><code>"+id+"</code>","bot ok");
+  }catch(e){ errEl.textContent=t("sync_fail"); }
+}
+async function connectSync(){
+  const token=document.getElementById("s-token").value.trim();
+  const gistId=document.getElementById("s-gist").value.trim();
+  const errEl=document.getElementById("s-err");
+  if(!token||!gistId){ errEl.textContent=t("sync_fail"); return; }
+  try{
+    const cfg={token,gistId};
+    const raw=await gistRead(cfg);
+    if(raw){
+      const fresh=await decryptJSON(raw,cryptoKey);
+      state=fresh; lastRemote=raw; lsSet(STORE_KEY,raw);
+    }else{
+      await gistWrite(cfg,await encryptJSON(state));
+    }
+    syncCfg=cfg;
+    lsSet(CFG_KEY,await encryptJSON(syncCfg));
+    setSyncStatus("on"); startSync(); renderAll();
+    closeModal();
+  }catch(e){ errEl.textContent=t("sync_fail"); }
+}
+async function disableSync(){
+  syncCfg=null; lsDel(CFG_KEY);
+  if(syncTimer){ clearInterval(syncTimer); syncTimer=null; }
+  setSyncStatus("off"); closeModal();
+  chatMsg(t("sync_disabled_msg"),"bot");
+}
+
+/* =================================================================
+   EXPORT / IMPORT (file cifrato)
+================================================================= */
+async function exportData(){
+  const blob=new Blob([await encryptJSON(state)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  const d=new Date();
+  a.download="registro-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+".rst";
+  a.click();
+  chatMsg(t("exp_ok"),"bot ok");
+}
+async function importData(input){
+  const file=input.files[0];
+  if(!file) return;
+  try{
+    const text=await file.text();
+    const parsed=JSON.parse(text);
+    const key=await deriveKey(prompt(t("imp_pw"))||"",unb64(parsed.salt));
+    const data=await decryptJSON(text,key);
+    if(confirm(t("imp_q"))){
+      state=data; await persist(); renderAll();
+      chatMsg(t("imp_ok"),"bot ok");
+    }
+  }catch(e){ alert(t("imp_fail")); }
+  input.value="";
+}
+
+function boot(){
+  try{
+    applyLang();
+    initGate();
+  }catch(e){
+    console.error("boot", e);
+    // fallback: mostra almeno i campi password base
+    var f=document.getElementById("gate-form");
+    if(f) f.innerHTML='<input type="password" id="pw1" placeholder="Password"><button class="main" onclick="location.reload()">OK</button>';
+  }
+}
+if(document.readyState==="loading"){
+  document.addEventListener("DOMContentLoaded", boot);
+}else{
+  boot();
+}
+</script>
+</body>
+</html>
