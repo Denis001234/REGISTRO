@@ -99,6 +99,11 @@ section > h2::after{content:"";flex:1;height:1px;background:var(--line)}
 .pay-row .ty{width:120px}
 .pay-row .am{width:90px;text-align:right;font-weight:600}
 .pay-row .me{color:var(--muted);flex:1}
+.pay-row .st{font-size:11px;letter-spacing:.4px;padding:2px 8px;border-radius:4px;white-space:nowrap}
+.pay-row .st.due{background:rgba(216,185,120,.14);color:#d8b978}
+.pay-row .st.paid{background:rgba(74,156,90,.14);color:var(--green)}
+.pay-row .edit{background:none;border:none;color:var(--muted);font-size:14px;padding:2px 6px}
+.pay-row .edit:hover{color:var(--gold)}
 .pay-row .del{background:none;border:none;color:var(--muted);font-size:15px;padding:2px 6px}
 .pay-row .del:hover{color:var(--red)}
 .mini{background:none;border:1px dashed var(--line);color:var(--muted);border-radius:6px;padding:6px 12px;font-size:12px;margin-top:10px;margin-right:8px}
@@ -188,8 +193,10 @@ body.reg-view #chatbar{display:none}
   .pay-row .d{width:auto;order:1}
   .pay-row .ty{width:auto;order:2;color:var(--text)}
   .pay-row .am{width:auto;order:3;margin-left:auto}
-  .pay-row .me{width:100%;order:4;flex:none;font-size:12px}
-  .pay-row .del{order:5;padding:2px 8px;font-size:18px}
+  .pay-row .st{order:4;font-size:12px}
+  .pay-row .me{width:100%;order:5;flex:none;font-size:12px}
+  .pay-row .edit{order:6;padding:2px 8px;font-size:17px}
+  .pay-row .del{order:7;padding:2px 8px;font-size:18px}
   .out-row{flex-wrap:wrap;gap:4px 10px}
   .out-row .d{width:auto}
   .out-row .who{width:auto}
@@ -309,8 +316,10 @@ it:{
   confirm_payment:"Conferma pagamento cliente", confirm_payout:"Conferma uscita",
   f_client:"Cliente", f_type:"Tipo", f_amount:"Importo €", f_date:"Data",
   f_assigned:"Assegnato a", f_method:"Metodo", f_dest:"Destinazione", f_ref:"Rif. cliente (opz.)",
-  btn_confirm:"Conferma", btn_cancel:"Annulla", btn_save:"Salva",
-  m_new_project:"Nuovo progetto", m_new_payment:"Nuovo pagamento", m_new_payout:"Nuova uscita",
+  btn_confirm:"Conferma", btn_cancel:"Annulla", btn_save:"Salva", btn_edit:"Modifica",
+  f_received:"Data ricevuta", f_handover:"Girato all'artista il", ph_handover:"vuoto = non ancora girato",
+  f_pct:"Percentuale artista %", st_due:"Da girare", st_paid:"Girato",
+  m_new_project:"Nuovo progetto", m_new_payment:"Nuovo pagamento", m_edit_payment:"Modifica pagamento", m_new_payout:"Nuova uscita",
   t_deposit:"Acconto", t_session:"Seduta", t_payment:"Pagamento",
   ord:["","Prima","Seconda","Terza","Quarta","Quinta"],
   m_cash:"Contanti", m_transfer:"Bonifico", m_card:"Carta", m_paypal:"PayPal",
@@ -363,8 +372,10 @@ de:{
   confirm_payment:"Kundenzahlung bestätigen", confirm_payout:"Ausgabe bestätigen",
   f_client:"Kunde", f_type:"Art", f_amount:"Betrag €", f_date:"Datum",
   f_assigned:"Zugeordnet an", f_method:"Zahlungsart", f_dest:"Empfänger", f_ref:"Kundenref. (opt.)",
-  btn_confirm:"Bestätigen", btn_cancel:"Abbrechen", btn_save:"Speichern",
-  m_new_project:"Neues Projekt", m_new_payment:"Neue Zahlung", m_new_payout:"Neue Ausgabe",
+  btn_confirm:"Bestätigen", btn_cancel:"Abbrechen", btn_save:"Speichern", btn_edit:"Bearbeiten",
+  f_received:"Erhalten am", f_handover:"An Künstler am", ph_handover:"leer = noch nicht ausgezahlt",
+  f_pct:"Anteil Künstler %", st_due:"Offen", st_paid:"Ausgezahlt",
+  m_new_project:"Neues Projekt", m_new_payment:"Neue Zahlung", m_edit_payment:"Zahlung bearbeiten", m_new_payout:"Neue Ausgabe",
   t_deposit:"Anzahlung", t_session:"Sitzung", t_payment:"Zahlung",
   ord:["","Erste","Zweite","Dritte","Vierte","Fünfte"],
   m_cash:"Bar", m_transfer:"Überweisung", m_card:"Karte", m_paypal:"PayPal",
@@ -617,12 +628,19 @@ function methodLabel(m){
   const map={cash:"m_cash",transfer:"m_transfer",card:"m_card",paypal:"m_paypal"};
   return map[m]?t(map[m]):m;
 }
+function defShare(artist){ return artist==="OP"?state.settings.shareOp:state.settings.shareAz; }
+function payShare(x,artist){ return (typeof x.pct==="number")?x.pct:defShare(artist); }
+function payQuota(x,artist){ return x.amount*payShare(x,artist); }
 function totals(artist){
-  const share=artist==="OP"?state.settings.shareOp:state.settings.shareAz;
-  let accrued=0;
-  state.projects.filter(p=>p.artist===artist).forEach(p=>p.payments.forEach(x=>accrued+=x.amount*share));
-  let paid=0;
-  state.payouts.filter(o=>o.artist===artist).forEach(o=>paid+=o.amount);
+  let accrued=0, handed=0;
+  state.projects.filter(p=>p.artist===artist).forEach(p=>p.payments.forEach(x=>{
+    const q=payQuota(x,artist);
+    accrued+=q;
+    if(x.hdate) handed+=q;   /* quota già girata all'artista su questa voce */
+  }));
+  let lump=0;
+  state.payouts.filter(o=>o.artist===artist).forEach(o=>lump+=o.amount); /* uscite storiche */
+  const paid=handed+lump;
   return {accrued,paid,due:accrued-paid};
 }
 function renderAll(){ renderDash(); renderMini(); renderProjects(); renderPayouts(); }
@@ -648,14 +666,21 @@ function renderProjects(){
   if(!state.projects.length){ box.innerHTML=`<div class="empty">${t("empty_projects")}</div>`; return; }
   box.innerHTML=state.projects.map(p=>{
     const tot=p.payments.reduce((s,x)=>s+x.amount,0);
-    const rows=p.payments.map((x,i)=>`
+    const rows=p.payments.map((x,i)=>{
+      const st=x.hdate
+        ? `<span class="st paid">${t("st_paid")} ${x.hdate}</span>`
+        : `<span class="st due">${t("st_due")} ${euro(payQuota(x,p.artist))}</span>`;
+      return `
       <div class="pay-row">
-        <span class="d">${x.date}</span>
+        <span class="d">${x.date||""}</span>
         <span class="ty">${typeLabel(x)}</span>
         <span class="am">${euro(x.amount)}</span>
-        <span class="me">${methodLabel(x.method)}</span>
+        ${st}
+        <span class="me">${escapeHtml(methodLabel(x.method))}</span>
+        <button class="edit" title="${t("btn_edit")}" onclick="editPayment('${p.id}',${i});event.stopPropagation()">✎</button>
         <button class="del" onclick="delPayment('${p.id}',${i});event.stopPropagation()">×</button>
-      </div>`).join("");
+      </div>`;
+    }).join("");
     return `
       <div class="proj" id="proj-${p.id}">
         <div class="proj-head" onclick="toggleProj('${p.id}')">
@@ -696,12 +721,13 @@ function findProject(client,artist){
   return state.projects.find(p=>p.client.toLowerCase()===c&&(!artist||p.artist===artist))
       || state.projects.find(p=>p.client.toLowerCase()===c);
 }
-async function addPayment(client,artist,type,amount,date,method){
+async function addPayment(client,artist,type,amount,date,method,extra){
   let p=findProject(client,artist);
   if(!p){ p={id:uid(),client:cap(client),artist:artist||"OP",payments:[]}; state.projects.push(p); }
-  p.payments.push({...type,amount,date,method});
+  p.payments.push({...type,amount,date,method,...(extra||{})});
   await persist(); renderAll();
 }
+function editPayment(pid,idx){ openModal("editpayment",pid,idx); }
 async function addPayout(artist,amount,date,method,client){
   state.payouts.push({id:uid(),artist,amount,date,method,client:client||""});
   await persist(); renderAll();
@@ -732,6 +758,12 @@ function parseDate(text){
   if(m){ let y=m[3].length===2?"20"+m[3]:m[3]; return String(m[1]).padStart(2,"0")+"."+String(m[2]).padStart(2,"0")+"."+y; }
   if(/\bieri\b|\bgestern\b/.test(tl)){ const d=new Date(today); d.setDate(d.getDate()-1); return fmt(d); }
   return fmt(today);
+}
+function normDate(s){
+  s=(s||"").trim();
+  if(!s) return "";
+  if(/\d{1,2}[.\/]\d{1,2}/.test(s)||/oggi|ieri|heute|gestern/i.test(s)) return parseDate(s);
+  return s;
 }
 function parseAmount(text){
   const tl=text.replace(/(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})/g,"");
@@ -841,8 +873,8 @@ function showConfirm(p){
         <div><label>${t("f_dest")}</label>${artistSelect("cf-artist",p.artist)}</div>
         <div><label>${t("f_amount")}</label><input id="cf-amount" type="number" step="0.01" value="${p.amount}"></div>
         <div><label>${t("f_date")}</label><input id="cf-date" value="${p.date}"></div>
-        <div><label>${t("f_method")}</label><input id="cf-method" value="${methodLabel(p.method)}" data-code="${p.method}"></div>
-        <div><label>${t("f_ref")}</label><input id="cf-client" value="${p.client||""}"></div>
+        <div><label>${t("f_method")}</label><input id="cf-method" value="${escapeHtml(methodLabel(p.method))}" data-code="${p.method}"></div>
+        <div><label>${t("f_ref")}</label><input id="cf-client" value="${escapeHtml(p.client||"")}"></div>
       </div>
       <div class="cbtns">
         <button class="yes" onclick="confirmPayout()">${t("btn_confirm")}</button>
@@ -855,18 +887,25 @@ function showConfirm(p){
     <div class="confirm">
       <div class="ct">${t("confirm_payment")}</div>
       <div class="cgrid">
-        <div><label>${t("f_client")}</label><input id="cf-client" value="${p.client||""}"></div>
+        <div><label>${t("f_client")}</label><input id="cf-client" value="${escapeHtml(p.client||"")}"></div>
         <div><label>${t("f_type")}</label>${typeSelect("cf-type",p.type.t)}</div>
         <div><label>${t("f_amount")}</label><input id="cf-amount" type="number" step="0.01" value="${p.amount}"></div>
-        <div><label>${t("f_date")}</label><input id="cf-date" value="${p.date}"></div>
+        <div><label>${t("f_received")}</label><input id="cf-date" value="${p.date}"></div>
         <div><label>${t("f_assigned")}</label>${artistSelect("cf-artist",p.artist||"OP")}</div>
-        <div><label>${t("f_method")}</label><input id="cf-method" value="${methodLabel(p.method)}" data-code="${p.method}"></div>
+        <div><label>${t("f_pct")}</label><input id="cf-pct" type="number" step="1" min="0" max="100" value="${Math.round(defShare(p.artist||"OP")*100)}"></div>
+        <div><label>${t("f_handover")}</label><input id="cf-hdate" placeholder="${t("ph_handover")}"></div>
+        <div><label>${t("f_method")}</label><input id="cf-method" value="${escapeHtml(methodLabel(p.method))}" data-code="${p.method}"></div>
       </div>
       <div class="cbtns">
         <button class="yes" onclick="confirmPayment()">${t("btn_confirm")}</button>
         <button class="no" onclick="cancelConfirm()">${t("btn_cancel")}</button>
       </div>
     </div>`;
+    const artSel=document.getElementById("cf-artist");
+    if(artSel){ artSel.addEventListener("change",()=>{
+      const pctEl=document.getElementById("cf-pct");
+      if(pctEl) pctEl.value=Math.round(defShare(artSel.value)*100);
+    }); }
   }
   box.scrollIntoView({behavior:"smooth",block:"end"});
 }
@@ -883,12 +922,17 @@ async function confirmPayment(){
   const client=document.getElementById("cf-client").value.trim();
   const ty=document.getElementById("cf-type").value;
   const amount=parseFloat(document.getElementById("cf-amount").value);
-  const date=document.getElementById("cf-date").value.trim();
+  const date=normDate(document.getElementById("cf-date").value);
   const artist=document.getElementById("cf-artist").value;
   const method=readMethodField("cf-method");
+  const hdate=normDate(document.getElementById("cf-hdate").value);
+  const pctRaw=parseFloat(document.getElementById("cf-pct").value);
   if(!client||!amount){ chatMsg(t("bot_missing"),"bot warn"); return; }
   const type=ty==="session"?{t:"session",n:pendingSessionN}:{t:ty};
-  await addPayment(client,artist,type,amount,date,method);
+  const extra={};
+  if(hdate) extra.hdate=hdate;
+  if(!isNaN(pctRaw) && Math.abs(pctRaw/100-defShare(artist))>0.0001) extra.pct=pctRaw/100;
+  await addPayment(client,artist,type,amount,date,method,extra);
   document.getElementById("confirmbox").innerHTML="";
   chatMsg(`${t("bot_registered")}: <b>${escapeHtml(client)}</b> · ${typeLabel(type)} · ${euro(amount)} · ${date}${method?" · "+methodLabel(method):""}.`,"bot ok");
 }
@@ -907,7 +951,7 @@ async function confirmPayout(){
 /* =================================================================
    MODALI
 ================================================================= */
-function openModal(kind,pid){
+function openModal(kind,pid,idx){
   const m=document.getElementById("modal"), box=document.getElementById("mbox");
   const today=parseDate("");
   if(kind==="project"){
@@ -917,14 +961,34 @@ function openModal(kind,pid){
       <div class="mbtns"><button class="cancel" onclick="closeModal()">${t("btn_cancel")}</button>
       <button class="save" onclick="saveProject()">${t("btn_save")}</button></div>`;
   }else if(kind==="payment"){
+    const pp=state.projects.find(x=>x.id===pid);
+    const pctDef=Math.round(defShare(pp?pp.artist:"OP")*100);
     box.innerHTML=`<h3>${t("m_new_payment")}</h3>
       <input type="hidden" id="m-pid" value="${pid}">
       <div class="mrow"><label>${t("f_type")}</label>${typeSelect("m-type","session")}</div>
       <div class="mrow"><label>${t("f_amount")}</label><input id="m-amount" type="number" step="0.01"></div>
-      <div class="mrow"><label>${t("f_date")}</label><input id="m-date" value="${today}"></div>
+      <div class="mrow"><label>${t("f_received")}</label><input id="m-date" value="${today}"></div>
+      <div class="mrow"><label>${t("f_pct")}</label><input id="m-pct" type="number" step="1" min="0" max="100" value="${pctDef}"></div>
+      <div class="mrow"><label>${t("f_handover")}</label><input id="m-hdate" placeholder="${t("ph_handover")}"></div>
       <div class="mrow"><label>${t("f_method")}</label><input id="m-method"></div>
       <div class="mbtns"><button class="cancel" onclick="closeModal()">${t("btn_cancel")}</button>
       <button class="save" onclick="savePayment()">${t("btn_save")}</button></div>`;
+  }else if(kind==="editpayment"){
+    const pp=state.projects.find(x=>x.id===pid);
+    const x=pp?pp.payments[idx]:null;
+    if(!x){ return; }
+    const pctVal=Math.round(payShare(x,pp.artist)*100);
+    box.innerHTML=`<h3>${t("m_edit_payment")}</h3>
+      <input type="hidden" id="m-pid" value="${pid}">
+      <input type="hidden" id="m-idx" value="${idx}">
+      <div class="mrow"><label>${t("f_type")}</label>${typeSelect("m-type",x.t)}</div>
+      <div class="mrow"><label>${t("f_amount")}</label><input id="m-amount" type="number" step="0.01" value="${x.amount}"></div>
+      <div class="mrow"><label>${t("f_received")}</label><input id="m-date" value="${x.date||""}"></div>
+      <div class="mrow"><label>${t("f_pct")}</label><input id="m-pct" type="number" step="1" min="0" max="100" value="${pctVal}"></div>
+      <div class="mrow"><label>${t("f_handover")}</label><input id="m-hdate" value="${x.hdate||""}" placeholder="${t("ph_handover")}"></div>
+      <div class="mrow"><label>${t("f_method")}</label><input id="m-method" value="${escapeHtml(methodLabel(x.method))}" data-code="${x.method||""}"></div>
+      <div class="mbtns"><button class="cancel" onclick="closeModal()">${t("btn_cancel")}</button>
+      <button class="save" onclick="saveEditPayment()">${t("btn_save")}</button></div>`;
   }else if(kind==="payout"){
     box.innerHTML=`<h3>${t("m_new_payout")}</h3>
       <div class="mrow"><label>${t("f_dest")}</label>${artistSelect("m-artist","OP")}</div>
@@ -972,8 +1036,33 @@ async function savePayment(){
   const amount=parseFloat(document.getElementById("m-amount").value);
   if(!p||!amount) return;
   const ty=document.getElementById("m-type").value;
-  p.payments.push({t:ty,n:0,amount,date:document.getElementById("m-date").value.trim(),
-    method:parseMethod(document.getElementById("m-method").value)||document.getElementById("m-method").value.trim()});
+  const hdate=normDate(document.getElementById("m-hdate").value);
+  const pctRaw=parseFloat(document.getElementById("m-pct").value);
+  const pay={t:ty,n:0,amount,date:normDate(document.getElementById("m-date").value),
+    method:parseMethod(document.getElementById("m-method").value)||document.getElementById("m-method").value.trim()};
+  if(hdate) pay.hdate=hdate;
+  if(!isNaN(pctRaw) && Math.abs(pctRaw/100-defShare(p.artist))>0.0001) pay.pct=pctRaw/100;
+  p.payments.push(pay);
+  await persist(); renderAll(); closeModal();
+  const el=document.getElementById("proj-"+pid); if(el) el.classList.add("open");
+}
+async function saveEditPayment(){
+  const pid=document.getElementById("m-pid").value;
+  const idx=parseInt(document.getElementById("m-idx").value,10);
+  const p=state.projects.find(x=>x.id===pid);
+  if(!p||!p.payments[idx]) return;
+  const orig=p.payments[idx];
+  const amount=parseFloat(document.getElementById("m-amount").value);
+  if(!amount) return;
+  const ty=document.getElementById("m-type").value;
+  const hdate=normDate(document.getElementById("m-hdate").value);
+  const pctRaw=parseFloat(document.getElementById("m-pct").value);
+  const pay={t:ty,n:ty==="session"?(orig.n||0):0,amount,
+    date:normDate(document.getElementById("m-date").value),
+    method:readMethodField("m-method")};
+  if(hdate) pay.hdate=hdate;
+  if(!isNaN(pctRaw) && Math.abs(pctRaw/100-defShare(p.artist))>0.0001) pay.pct=pctRaw/100;
+  p.payments[idx]=pay;
   await persist(); renderAll(); closeModal();
   const el=document.getElementById("proj-"+pid); if(el) el.classList.add("open");
 }
