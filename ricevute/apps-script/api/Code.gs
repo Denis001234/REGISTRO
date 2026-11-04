@@ -182,29 +182,27 @@ function photo_(id) {
 }
 
 /* ================= Gemini ================= */
+const GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.7-flash'];
 function gemini_(parts, json) {
   if (!prop('GEMINI_KEY')) throw new Error('manca_chiave_gemini');
-  const body = { contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.1 } };
-  if (json) body.generationConfig.responseMimeType = 'application/json';
-  const call = model => UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent',
-    { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': prop('GEMINI_KEY') }, payload: JSON.stringify(body), muteHttpExceptions: true });
-  let model = prop('GEMINI_MODEL') || 'gemini-flash-latest';
-  let r = call(model);
-  if (r.getResponseCode() === 404 || r.getResponseCode() === 400 && /model/i.test(r.getContentText())) {
-    const hint = (r.getContentText().match(/models\/(gemini-[\w.\-]+)/g) || []).map(x => x.slice(7)).filter(x => x !== model);
-    const cands = hint.concat(pickModels_()).filter((x, i, a) => x && a.indexOf(x) === i && x !== model);
-    for (const m of cands) { r = call(m); if (r.getResponseCode() === 200) { P().setProperty('GEMINI_MODEL', m); model = m; break; } }
+  const req = (model, think) => {
+    const gc = { temperature: 0.1 };
+    if (json) gc.responseMimeType = 'application/json';
+    if (think) gc.thinkingConfig = { thinkingLevel: 'low' };
+    return UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent',
+      { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': prop('GEMINI_KEY') }, payload: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: gc }), muteHttpExceptions: true });
+  };
+  const models = (prop('GEMINI_MODEL') ? [prop('GEMINI_MODEL')] : []).concat(GEMINI_MODELS).filter((x, i, a) => a.indexOf(x) === i);
+  let r, last = '';
+  for (const m of models) {
+    r = req(m, true);
+    if (r.getResponseCode() === 400 && /thinking/i.test(r.getContentText())) r = req(m, false);
+    if (r.getResponseCode() === 200) break;
+    last = m + ' ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 150);
   }
-  if (r.getResponseCode() !== 200) throw new Error('gemini ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 200));
-  const t = (JSON.parse(r.getContentText()).candidates || [{}])[0].content.parts.map(x => x.text || '').join('');
-  return json ? JSON.parse(t.replace(/^```json|```$/g, '').trim()) : t;
-}
-function pickModels_() {
-  const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': prop('GEMINI_KEY') }, muteHttpExceptions: true });
-  if (r.getResponseCode() !== 200) return [];
-  const ms = (JSON.parse(r.getContentText()).models || []).filter(m => (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0).map(m => m.name.replace('models/', ''));
-  const score = n => (/flash/.test(n) ? 100 : 0) + (/lite|image|tts|live|audio|embed|thinking|exp|preview/.test(n) ? -50 : 0) + (parseFloat((n.match(/(\d+(\.\d+)?)/) || [0, 0])[1]) || 0);
-  return ms.filter(n => /^gemini/.test(n)).sort((a, b) => score(b) - score(a)).slice(0, 4);
+  if (r.getResponseCode() !== 200) throw new Error('gemini ' + last);
+  const t = (JSON.parse(r.getContentText()).candidates || [{}])[0].content.parts.filter(x => !x.thought).map(x => x.text || '').join('');
+  return json ? JSON.parse(t.replace(/^\s*```(json)?|```\s*$/g, '').trim()) : t;
 }
 const RECEIPT_PROMPT = `Sei il lettore di documenti contabili dello studio di tatuaggi Waiblingen Ink (Denis Cicala & Linda Salihu-Cicala GbR, Lange Straße 10, 71332 Waiblingen, Germania). Rispondi SOLO con JSON.
 TIPI
