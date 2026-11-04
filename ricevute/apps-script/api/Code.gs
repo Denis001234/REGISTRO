@@ -65,7 +65,11 @@ function doPost(e) {
       case 'list': return out_({ docs: listDocs_().filter(d => admin || !d.priv) });
       case 'save': need(); return out_({ doc: saveDoc_(req.doc, req.photo, req.mime, user.email) });
       case 'del': need(); return out_(delDoc_(req.id, user.email));
-      case 'read': need(); return out_({ fields: readImage_(req.photo, req.mime) });
+      case 'read': need(); {
+        const t0 = Date.now();
+        try { const f = readImage_(req.photo, req.mime); log_(user.email, 'lettura ok', '', (Date.now() - t0) + 'ms · ' + (gemini_.trace || '')); return out_({ fields: f }); }
+        catch (err) { log_(user.email, 'lettura errore', '', (Date.now() - t0) + 'ms · ' + (gemini_.trace || '') + ' · ' + err.message); throw err; }
+      }
       case 'photo': return out_(photo_(req.id));
       case 'history': return out_({ items: history_(req.id) });
       case 'ask': return out_(ask_(req.q, admin));
@@ -182,7 +186,7 @@ function photo_(id) {
 }
 
 /* ================= Gemini ================= */
-const GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.7-flash'];
+const GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 function gemini_(parts, json) {
   if (!prop('GEMINI_KEY')) throw new Error('manca_chiave_gemini');
   const req = (model, think) => {
@@ -194,12 +198,16 @@ function gemini_(parts, json) {
   };
   const models = (prop('GEMINI_MODEL') ? [prop('GEMINI_MODEL')] : []).concat(GEMINI_MODELS).filter((x, i, a) => a.indexOf(x) === i);
   let r, last = '';
+  const trace = [];
   for (const m of models) {
+    const t0 = Date.now();
     r = req(m, true);
     if (r.getResponseCode() === 400 && /thinking/i.test(r.getContentText())) r = req(m, false);
+    trace.push(m + ' ' + r.getResponseCode() + ' ' + (Date.now() - t0) + 'ms');
     if (r.getResponseCode() === 200) break;
     last = m + ' ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 150);
   }
+  gemini_.trace = trace.join(', ');
   if (r.getResponseCode() !== 200) throw new Error('gemini ' + last);
   const t = (JSON.parse(r.getContentText()).candidates || [{}])[0].content.parts.filter(x => !x.thought).map(x => x.text || '').join('');
   return json ? JSON.parse(t.replace(/^\s*```(json)?|```\s*$/g, '').trim()) : t;
