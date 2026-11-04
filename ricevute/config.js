@@ -1,4 +1,1 @@
-window.CFG={
-  API:"",   // URL della web app API (Apps Script, account info)
-  LOGIN:"" // URL della web app LOGIN (Apps Script)
-};
+window.CFG={API:"https://script.google.com/macros/s/AKfycbwEq6BDCkJEhFbh-9Y3QC55UAQam_HJkwx7lO6W8VTB9otfiXbmgEAtODQjyCHjplIH/exec",LOGIN:"https://script.google.com/macros/s/AKfycbytpDnoXW_cwPpD3uSpDEdpYlacl4LuL9ZxwjLhRGDbYZHxzUaJ9hbNnHU13hk3g6k14Q/exec"};

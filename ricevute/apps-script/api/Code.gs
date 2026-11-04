@@ -2,30 +2,30 @@
  * Ricevute Waiblingen Ink · API
  * Progetto principale sull'account info.gardenoftattoo@gmail.com.
  * Deploy: Web app, Execute as: "Me", Who has access: "Anyone".
- * La sicurezza la fa il token firmato del progetto LOGIN (stesso SECRET).
- *
- * Script properties:
- *   SECRET          segreto condiviso con il progetto LOGIN (lungo, casuale)
- *   USERS           {"email":"admin"|"viewer", ...}
- *   GEMINI_KEY      chiave gratuita di Google AI Studio
- *   GEMINI_MODEL    (opzionale) default gemini-2.5-flash
- *   MODE            "main" (info) oppure "collector" (denisrider00)
- *   MAIN_URL        solo collector: URL della web app API principale
- *   COLLECT_SECRET  segreto tra collector e main
- *   IMPORT_FROM     data iniziale import email, es. 2026/09/01
- * Dopo aver incollato il codice: eseguire setup() una volta.
+ * Accesso: il progetto LOGIN rimanda all'app con un token Google (solo email); questa API lo verifica
+ * presso Google, controlla USERS e rilascia una sessione firmata con SECRET (generato qui, mai fuori).
+ * Il collector (denisrider00) si identifica allo stesso modo con il token Google del suo account.
+ * Script properties (create da setup, nessuna da scrivere a mano):
+ *   SECRET, USERS, IMPORT_FROM, FOLDER_ID, SHEET_ID...   GEMINI_KEY si inserisce dall'app (Impostazioni).
+ * Per il collector su denisrider00: impostare MODE_DEFAULT = 'collector' qui sotto prima di eseguire setup().
  */
 
 const COLS = ['id','type','art','client','vendor','number','date','total','rate','cat','due','iban','note','src','mailUrl','msgId','photoId','mime','status','priv','owner','createdAt','createdBy','updatedAt','updatedBy','deleted','deletedAt','deletedBy'];
 const CATS = ['einnahme','anzahlung','platzmiete','material','miete','energie','telefon','software','versicherung','werbung','fahrzeug','buero','gebuehren','steuer','beratung','sonstiges'];
+const MODE_DEFAULT = 'main';
+const MAIN_URL = '';  // solo collector: URL /exec della API principale
+const DEFAULT_USERS = {'info.gardenoftattoo@gmail.com':'admin','denisrider00@gmail.com':'admin','salihu1999@gmail.com':'admin'};
 const P = () => PropertiesService.getScriptProperties();
 const prop = k => P().getProperty(k);
 
 /* ================= setup ================= */
 function setup() {
   const p = P();
+  if (!prop('MODE')) p.setProperty('MODE', MODE_DEFAULT);
   if (!prop('IMPORT_FROM')) p.setProperty('IMPORT_FROM', '2026/09/01');
   if (prop('MODE') === 'collector') { installTriggers_(['importMail']); return 'collector pronto'; }
+  if (!prop('SECRET')) p.setProperty('SECRET', Utilities.getUuid() + Utilities.getUuid());
+  if (!prop('USERS')) p.setProperty('USERS', JSON.stringify(DEFAULT_USERS));
   if (!prop('FOLDER_ID')) {
     const root = DriveApp.createFolder('Waiblingen Ink Ricevute');
     p.setProperty('FOLDER_ID', root.getId());
@@ -56,6 +56,7 @@ function doPost(e) {
   try { req = JSON.parse(e.postData.contents); } catch (err) { return out_({ error: 'bad_request' }); }
   try {
     if (req.action === 'collect') return out_(collect_(req));
+    if (req.action === 'login') return out_(login_(req.g));
     const user = auth_(req.token);
     const admin = user.role === 'admin';
     const need = () => { if (!admin) throw new Error('solo_lettura'); };
@@ -69,12 +70,36 @@ function doPost(e) {
       case 'history': return out_({ items: history_(req.id) });
       case 'ask': return out_(ask_(req.q, admin));
       case 'importNow': need(); return out_({ imported: importMail() });
+      case 'setKey': need(); P().setProperty('GEMINI_KEY', String(req.key || '').trim()); log_(user.email, 'chiave gemini', '', 'aggiornata'); return out_({ ok: true });
+      case 'status': need(); return out_(status_());
       default: return out_({ error: 'azione_sconosciuta' });
     }
   } catch (err) { return out_({ error: String(err.message || err) }); }
 }
 function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
+function google_(g) {
+  if (!g) throw new Error('login');
+  const r = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(g), { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error('login');
+  const i = JSON.parse(r.getContentText());
+  if (!i.email || String(i.email_verified) !== 'true' || Number(i.expires_in) <= 0) throw new Error('login');
+  return { email: String(i.email).toLowerCase(), aud: String(i.aud || i.azp || '') };
+}
+function login_(g) {
+  const i = google_(g);
+  const users = JSON.parse(prop('USERS') || '{}'); const role = users[i.email];
+  if (!role) { log_(i.email, 'accesso negato', '', ''); throw new Error('non_autorizzato'); }
+  if (!prop('LOGIN_AUD')) P().setProperty('LOGIN_AUD', i.aud);
+  if (prop('LOGIN_AUD') !== i.aud) { log_(i.email, 'accesso rifiutato', '', 'app sconosciuta ' + i.aud); throw new Error('login'); }
+  const body = Utilities.base64EncodeWebSafe(JSON.stringify({ e: i.email, r: role, x: Date.now() + 1000 * 60 * 60 * 24 * 7 }));
+  const sig = Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(body, prop('SECRET')));
+  log_(i.email, 'accesso', '', '');
+  return { token: body + '.' + sig, email: i.email, role };
+}
+function status_() {
+  return { gemini: !!prop('GEMINI_KEY'), triggers: ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction()), sheet: 'https://docs.google.com/spreadsheets/d/' + prop('SHEET_ID'), folder: 'https://drive.google.com/drive/folders/' + prop('FOLDER_ID'), importFrom: prop('IMPORT_FROM') };
+}
 function auth_(token) {
   if (!token || token.indexOf('.') < 0) throw new Error('login');
   const [body, sig] = token.split('.');
@@ -162,6 +187,7 @@ function gemini_(parts, json) {
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent';
   const body = { contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.1 } };
   if (json) body.generationConfig.responseMimeType = 'application/json';
+  if (!prop('GEMINI_KEY')) throw new Error('manca_chiave_gemini');
   const r = UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': prop('GEMINI_KEY') }, payload: JSON.stringify(body), muteHttpExceptions: true });
   if (r.getResponseCode() !== 200) throw new Error('gemini ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 200));
   const t = (JSON.parse(r.getContentText()).candidates || [{}])[0].content.parts.map(x => x.text || '').join('');
@@ -211,26 +237,18 @@ function importMail() {
       const atts = m.getAttachments({ includeInlineImages: false }).filter(a => /pdf|image\//.test(a.getContentType()) && a.getSize() < 5e6);
       if (!MAIL_HINT.test(subj + ' ' + body.slice(0, 1500)) && !atts.length) continue;
       if (/nachrichten zur freigabe|resoconto (quotidiano|mensile) versamenti|zahlungseingang|auszahlung/i.test(subj)) continue;
-      const parts = [{ text: `Email ricevuta da ${m.getFrom()} il ${Utilities.formatDate(m.getDate(), 'Europe/Berlin', 'yyyy-MM-dd')}.
-Oggetto: ${subj}
-Testo:
-${body}
-
-Decidi se è la PROVA di una SPESA dello studio o di una fattura da pagare (scontrino, fattura, ricevuta di pagamento, addebito). NON sono spese: newsletter, pubblicità, conferme di ordine senza importo, incassi ricevuti, resoconti di vendite, avvisi di sicurezza.
-Rispondi SOLO con JSON {"expense":true|false,"type":"acquisto|fattura","vendor":string,"date":"YYYY-MM-DD","number":string|null,"total":number|null,"rate":19|7|0|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"note":"breve descrizione"}.
-Abbonamenti digitali -> "software". Se non c'è un importo chiaro, expense=false.` }];
-      if (atts[0]) parts.push({ inline_data: { mime_type: atts[0].getContentType(), data: Utilities.base64Encode(atts[0].getBytes()) } });
-      let r; try { r = gemini_(parts, true); } catch (err) { log_('import', 'errore', '', err.message); return n; }
-      if (!r.expense || r.total == null) continue;
-      const doc = { type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || Utilities.formatDate(m.getDate(), 'Europe/Berlin', 'yyyy-MM-dd'), number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
       const mailUrl = 'https://mail.google.com/mail/?authuser=' + Session.getEffectiveUser().getEmail() + '#all/' + m.getId();
+      const raw = { from: m.getFrom(), date: Utilities.formatDate(m.getDate(), 'Europe/Berlin', 'yyyy-MM-dd'), subject: subj, body, msgId: m.getId(), mailUrl,
+        att: atts[0] ? { mime: atts[0].getContentType(), data: Utilities.base64Encode(atts[0].getBytes()), name: atts[0].getName() } : null };
       if (collector) {
-        const res = UrlFetchApp.fetch(prop('MAIN_URL'), { method: 'post', contentType: 'text/plain', muteHttpExceptions: true, followRedirects: true,
-          payload: JSON.stringify({ action: 'collect', secret: prop('COLLECT_SECRET'), doc, msgId: m.getId(), mailUrl, from: Session.getEffectiveUser().getEmail(),
-            att: atts[0] ? { mime: atts[0].getContentType(), data: Utilities.base64Encode(atts[0].getBytes()), name: atts[0].getName() } : null }) });
+        const res = UrlFetchApp.fetch(MAIN_URL, { method: 'post', contentType: 'text/plain', muteHttpExceptions: true, followRedirects: true,
+          payload: JSON.stringify({ action: 'collect', g: ScriptApp.getOAuthToken(), mail: raw }) });
         if (res.getResponseCode() !== 200) return n;
-      } else storeMailDoc_(doc, m.getId(), mailUrl, atts[0] ? { mime: atts[0].getContentType(), bytes: atts[0].getBytes(), name: atts[0].getName() } : null, 'ok', 'info');
-      n++;
+        const j = JSON.parse(res.getContentText() || '{}'); if (j.error) { if (j.error === 'manca_chiave_gemini') return n; continue; }
+        if (j.stored) n++;
+      } else {
+        try { if (parseMail_(raw, 'ok', 'info')) n++; } catch (err) { log_('import', 'errore', '', err.message); return n; }
+      }
     }
     th.addLabel(label);
   }
@@ -245,16 +263,34 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     const sh = sheet_(); const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-    if (listDocs_(true).some(d => d.msgId === msgId)) return;
+    if (listDocs_(true).some(d => d.msgId === msgId)) return false;
     sh.appendRow(h.map(k => rec[k] === undefined ? '' : rec[k]));
     log_('email (' + owner + ')', 'importato', rec.id, [rec.vendor, rec.number, rec.total].filter(Boolean).join(' · '));
   } finally { lock.releaseLock(); }
+  return true;
+}
+function parseMail_(raw, status, owner) {
+  const parts = [{ text: `Email ricevuta da ${raw.from} il ${raw.date}.
+Oggetto: ${raw.subject}
+Testo:
+${String(raw.body || '').slice(0, 6000)}
+
+Decidi se è la PROVA di una SPESA dello studio o di una fattura da pagare (scontrino, fattura, ricevuta di pagamento, addebito). NON sono spese: newsletter, pubblicità, conferme di ordine senza importo, incassi ricevuti, resoconti di vendite, avvisi di sicurezza.
+Rispondi SOLO con JSON {"expense":true|false,"type":"acquisto|fattura","vendor":string,"date":"YYYY-MM-DD","number":string|null,"total":number|null,"rate":19|7|0|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"note":"breve descrizione"}.
+Abbonamenti digitali -> "software". Se non c'è un importo chiaro, expense=false.` }];
+  if (raw.att) parts.push({ inline_data: { mime_type: raw.att.mime, data: raw.att.data } });
+  const r = gemini_(parts, true);
+  if (!r.expense || r.total == null) return false;
+  const doc = { type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
+  return storeMailDoc_(doc, String(raw.msgId), String(raw.mailUrl || ''), raw.att ? { mime: raw.att.mime, bytes: Utilities.base64Decode(raw.att.data), name: raw.att.name } : null, status, owner);
 }
 function collect_(req) {
-  if (!req.secret || req.secret !== prop('COLLECT_SECRET')) return { error: 'login' };
-  const att = req.att ? { mime: req.att.mime, bytes: Utilities.base64Decode(req.att.data), name: req.att.name } : null;
-  storeMailDoc_(req.doc || {}, String(req.msgId), String(req.mailUrl || ''), att, 'confirm', String(req.from || 'denisrider00'));
-  return { ok: true };
+  const i = google_(req.g);
+  const users = JSON.parse(prop('USERS') || '{}');
+  if (users[i.email] !== 'admin' || i.email === Session.getEffectiveUser().getEmail()) return { error: 'login' };
+  const m = req.mail || {};
+  if (listDocs_(true).some(d => d.msgId === String(m.msgId))) return { stored: false };
+  return { stored: !!parseMail_(m, 'confirm', i.email) };
 }
 
 /* ================= backup giornaliero ================= */

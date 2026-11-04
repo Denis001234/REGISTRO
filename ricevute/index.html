@@ -113,6 +113,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
   <div><h1 style="margin:0;font-size:32px;font-weight:800;letter-spacing:-.5px">Ricevute e fatture</h1><p style="margin:8px 0 0;color:#475569;font-size:16px">Waiblingen Ink · Belege und Rechnungen</p></div>
   <a id="loginBtn" class="primary" style="display:flex;align-items:center;justify-content:center;text-decoration:none" href="#" data-t="login">Accedi con Google</a>
   <p style="margin:0;font-size:13px;color:#475569;text-align:center" data-t="loginTxt">Entra solo chi è stato invitato.</p>
+  <p id="loginErr" style="margin:0;font-size:14px;color:#b91c1c;text-align:center"></p>
 </section>
 
 <div class="app hide">
@@ -147,6 +148,8 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
         </div>
         <div class="head"><b data-t="latest">Ultimi documenti</b><button class="link" id="seeAll" data-t="seeAll">Vedi tutti</button></div>
         <div class="list" id="latest"></div>
+        <div id="keyBox" class="warn hide" style="flex-direction:column;gap:8px"><b>Manca la chiave Gemini: incollala qui una volta sola (si crea gratis su aistudio.google.com/apikey con l'account info).</b><div class="ask" style="width:100%"><input id="keyIn" type="password" autocomplete="off" aria-label="Chiave Gemini" placeholder="AIza…"><button type="button" id="keyBtn">OK</button></div></div>
+        <div id="stLinks" style="font-size:13px;text-align:center"></div>
         <div style="display:flex;justify-content:space-between"><button class="link" id="checkMail" data-t="checkMail">Controlla le email ora</button><button class="link" id="logout" data-t="logout" style="color:var(--muted)">Esci</button></div>
       </div>
     </main>

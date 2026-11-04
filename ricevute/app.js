@@ -37,7 +37,8 @@ const blobToB64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(Strin
 
 /* ---------- login e API ---------- */
 let token=null,user=null;
-(function(){const m=location.hash.match(/#t=([\w\-=.]+)/);if(m){try{localStorage.setItem("wi-token",m[1])}catch(e){}history.replaceState(null,"",location.pathname)}try{token=localStorage.getItem("wi-token")}catch(e){}})();
+let gtoken=null;
+(function(){const m=location.hash.match(/#g=([^&]+)/);if(m){gtoken=decodeURIComponent(m[1]);history.replaceState(null,"",location.pathname)}try{token=localStorage.getItem("wi-token")}catch(e){}})();
 function logout(){try{localStorage.removeItem("wi-token")}catch(e){}token=null;user=null;showLogin()}
 async function api(action,payload){
   let r;
@@ -186,6 +187,8 @@ document.addEventListener("click",e=>{const c=e.target.closest("#catChips button
 $$("#archChips button").forEach(b=>b.onclick=()=>{$$("#archChips button").forEach(x=>x.classList.toggle("on",x===b));renderAll()});
 $("#archMonth").oninput=renderAll;
 $("#confBanner").onclick=()=>{catF="__conf";show("arch")};
+$("#keyBtn").onclick=async()=>{const k=$("#keyIn").value.trim();if(!k)return;try{await api("setKey",{key:k});$("#keyIn").value="";toast("✓");loadStatus()}catch(e){toast(e.message)}};
+async function loadStatus(){if(!isAdmin())return;try{const s=await api("status");$("#keyBox").classList.toggle("hide",s.gemini);$("#stLinks").innerHTML=`<a class="link" target="_blank" rel="noopener" href="${esc(s.sheet)}">Foglio archivio</a> · <a class="link" target="_blank" rel="noopener" href="${esc(s.folder)}">Cartella Drive</a>`}catch(e){}}
 $("#checkMail").onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent=t("loading");try{const j=await api("importNow");toast(t("mailDone")(j.imported||0));await load()}catch(err){toast(err.message)}finally{b.disabled=false;b.textContent=t("checkMail")}};
 
 /* ---------- ricerca che perdona gli errori ---------- */
@@ -249,10 +252,11 @@ $("#xEl").onclick=async()=>{busy(true);try{await exportPdf(perDocs(),"ELSTER Sch
 /* ---------- avvio ---------- */
 (async()=>{
   if(!CFG.API||!CFG.LOGIN){document.body.innerHTML="<p style='padding:20px'>Configurazione mancante (config.js).</p>";return}
+  if(gtoken){try{const j=await api("login",{g:gtoken});token=j.token;try{localStorage.setItem("wi-token",token)}catch(e){}}catch(e){showLogin();$("#loginErr").textContent=e.message==="non_autorizzato"?"Questo account non è autorizzato.":"Accesso non riuscito, riprova.";return}}
   if(!token)return showLogin();
   try{user=await api("me")}catch(e){return showLogin()}
   $("#v-login").classList.add("hide");$(".app").classList.remove("hide");
   $("#who").textContent=user.email;
   if(!isAdmin()){$("#shoot").classList.add("hide");$("#pickFile").classList.add("hide");$("#checkMail").classList.add("hide")}
-  applyLang();await load();
+  applyLang();await load();loadStatus();
 })();
