@@ -181,6 +181,7 @@ function saveDoc_(doc, photo, mime, who) {
     }
     const row = h.map(k => rec[k] === undefined ? '' : rec[k]);
     if (rowIdx > 0) sh.getRange(rowIdx + 1, 1, 1, h.length).setValues([row]); else sh.appendRow(row);
+    fileDoc_(rec);
     if (/@/.test(String(who))) record_(who, rec.id, before ? snap_(h, h.map(k => before[k])) : null, snap_(h, row), (before ? 'modifica' : 'nuovo') + ' · ' + [rec.client || rec.vendor, rec.total !== '' ? rec.total + ' €' : ''].filter(Boolean).join(' · '));
     if (before) {
       const f = x => x === undefined || x === null ? '' : x instanceof Date ? Utilities.formatDate(x, 'Europe/Berlin', 'yyyy-MM-dd') : String(x);
@@ -198,6 +199,7 @@ function delDoc_(id, who) {
       const beforeRow = v[i].slice();
       sh.getRange(i + 1, h.indexOf('deleted') + 1, 1, 3).setValues([[true, new Date().toISOString(), who]]);
       if (/@/.test(String(who))) { const after = v[i].slice(); after[h.indexOf('deleted')] = true; after[h.indexOf('deletedAt')] = new Date().toISOString(); after[h.indexOf('deletedBy')] = who; record_(who, id, snap_(h, beforeRow), snap_(h, after), 'storno · ' + [v[i][h.indexOf('client')] || v[i][h.indexOf('vendor')], v[i][h.indexOf('total')] + ' €'].join(' · ')); }
+      fileDoc_(snap_(h, sh.getRange(i + 1, 1, 1, h.length).getValues()[0]));
       log_(who, 'storno', id, 'documento stornato, resta nell\'archivio come eliminato'); return { ok: true };
     }
     return { ok: false };
@@ -351,6 +353,7 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
     const sh = sheet_(); const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
     if (listDocs_(true).some(d => d.msgId === msgId)) return false;
     sh.appendRow(h.map(k => rec[k] === undefined ? '' : rec[k]));
+    fileDoc_(rec);
     log_('email (' + owner + ')', 'importato', rec.id, [rec.vendor, rec.number, rec.total].filter(Boolean).join(' · '));
   } finally { lock.releaseLock(); }
   return true;
@@ -451,6 +454,7 @@ function importRun_() {
       const l2 = LockService.getScriptLock(); l2.waitLock(20000);
       try { const sh = sheet_(); const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]; sh.appendRow(h.map(k => rec[k] === undefined ? '' : rec[k])); } finally { l2.releaseLock(); }
       if (photo === f) f.moveTo(DriveApp.getFolderById(prop('PHOTO_ID'))); else f.moveTo(done);
+      fileDoc_(rec);
       log_('importazione', 'importato', rec.id, [rec.type, rec.client || rec.vendor, rec.number, rec.total, ai_.trace].filter(Boolean).join(' · '));
       n++;
     } catch (e) {
@@ -509,6 +513,7 @@ function undoRedo_(who, redo) {
       if (target) row = h.map((k, j) => target[k] === undefined ? d[r][j] : target[k]);
       else { row = d[r].slice(); row[h.indexOf('deleted')] = true; row[h.indexOf('deletedAt')] = new Date().toISOString(); row[h.indexOf('deletedBy')] = who + ' (annulla)'; }
       sh.getRange(r + 1, 1, 1, h.length).setValues([row]);
+      fileDoc_(snap_(h, row));
       break;
     }
     u.getRange(pick + 1, 7).setValue(redo ? 'fatto' : 'annullato');
@@ -516,4 +521,51 @@ function undoRedo_(who, redo) {
     log_(who, redo ? 'ripristinato' : 'annullato', id, v[pick][7] + ' (' + v[pick][2] + ')');
     return { ok: true, descr: v[pick][7], id, info: undoInfo_() };
   } finally { lock.releaseLock(); }
+}
+
+/* ================= cartella unica "Tutte le ricevute" su Drive =================
+ * Tutte le ricevute/2026-09/2026-09-07_DM_acquisto_18,05.jpg
+ * Tutte le ricevute/Stornati/...   Tutte le ricevute/Privati/...
+ * I file collegati all'app vengono spostati e rinominati (stesso file, stesso ID); gli originali HEIC restano in Importazione iniziale/Originali. */
+function allFolder_() {
+  let id = prop('ALL_ID');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
+  const f = DriveApp.getFolderById(prop('FOLDER_ID')).createFolder('Tutte le ricevute');
+  P().setProperty('ALL_ID', f.getId());
+  return f;
+}
+function fileName_(d) {
+  const clean = x => String(x || '').replace(/[\\/:*?"<>|#%]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const date = d.date instanceof Date ? Utilities.formatDate(d.date, 'Europe/Berlin', 'yyyy-MM-dd') : String(d.date || 'senza-data').slice(0, 10);
+  const kind = d.type === 'cliente' ? 'ricevuta' : d.type === 'fattura' ? 'fattura' : 'acquisto';
+  const tot = d.total === '' || d.total == null ? '' : String(Math.round(Number(d.total) * 100) / 100).replace('.', ',');
+  const ext = /pdf/.test(d.mime || '') ? 'pdf' : /png/.test(d.mime || '') ? 'png' : 'jpg';
+  return [date, clean(d.type === 'cliente' ? d.client : d.vendor) || 'documento', kind, d.type === 'cliente' ? clean(d.number) : '', tot].filter(Boolean).join('_') + '.' + ext;
+}
+function fileDoc_(d) {
+  try {
+    if (!d || !d.photoId) return;
+    const all = allFolder_(), file = DriveApp.getFileById(d.photoId);
+    const date = d.date instanceof Date ? Utilities.formatDate(d.date, 'Europe/Berlin', 'yyyy-MM') : String(d.date || '').slice(0, 7);
+    const del = d.deleted === true || String(d.deleted).toUpperCase() === 'TRUE';
+    const priv = d.priv === true || String(d.priv).toUpperCase() === 'TRUE';
+    const target = sub_(all, del ? 'Stornati' : priv ? 'Privati' : (/^\d{4}-\d{2}$/.test(date) ? date : 'Senza data'));
+    const name = fileName_(d);
+    if (file.getName() !== name) file.setName(name);
+    const parents = file.getParents(); let inside = false;
+    while (parents.hasNext()) if (parents.next().getId() === target.getId()) inside = true;
+    if (!inside) file.moveTo(target);
+  } catch (e) { log_('drive', 'errore cartella', d && d.id, String(e.message).slice(0, 200)); }
+}
+function organizeAll() {
+  const t0 = Date.now(), done = JSON.parse(prop('ORG_DONE') || '{}');
+  const docs = listDocs_(true); let n = 0, left = 0;
+  for (const d of docs) {
+    if (!d.photoId || done[d.id]) continue;
+    if (Date.now() - t0 > 5 * 60 * 1000) { left++; continue; }
+    fileDoc_(d); done[d.id] = 1; n++;
+  }
+  P().setProperty('ORG_DONE', JSON.stringify(done));
+  log_('drive', 'cartella unica', '', n + ' file sistemati' + (left ? ', ' + left + ' ancora da fare' : ''));
+  Logger.log(n + ' file sistemati, ' + left + ' da fare');
 }
