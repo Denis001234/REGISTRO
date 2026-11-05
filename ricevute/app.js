@@ -62,14 +62,14 @@ async function load(){try{const j=await api("list");docs=j.docs||[];renderAll()}
 
 /* ---------- viste ---------- */
 function show(v){
-  ["home","card","arch","ask","exp"].forEach(x=>$("#v-"+x).classList.toggle("hide",x!==v));
+  ["home","card","arch","ask","exp","sum"].forEach(x=>$("#v-"+x).classList.toggle("hide",x!==v));
   $$("nav.tabs button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
-  $("nav.tabs").classList.toggle("hide",v==="card");
+  $("nav.tabs").classList.toggle("hide",v==="card");if(v==="sum")$$("nav.tabs button").forEach(b=>b.classList.toggle("on",b.dataset.v==="home"));
   window.scrollTo(0,0);renderAll();
 }
 $$("nav.tabs button").forEach(b=>b.onclick=()=>b.dataset.v==="shoot"?openCamera():show(b.dataset.v));
 $("#seeAll").onclick=()=>show("arch");
-$("#cardBack").onclick=()=>{editing=null;show("home")};
+$("#cardBack").onclick=()=>{const back=editing&&editing._from;editing=null;show(back||"home")};
 
 /* ---------- foto e lettura con Gemini ---------- */
 const fileIn=$("#file");
@@ -164,7 +164,7 @@ $("#del").onclick=async e=>{
   const b=e.currentTarget;if(!b.dataset.sure){b.dataset.sure=1;b.textContent=t("sure");setTimeout(()=>{delete b.dataset.sure;b.textContent=t("delete")},3000);return}
   try{await api("del",{id:editing.id});editing=null;toast(t("deleted"));await load();show("home")}catch(err){toast(err.message)}
 };
-function openDoc(id){const d=docs.find(x=>x.id===id);if(!d)return;editing=Object.assign({},d);fillCard();warn(null);show("card")}
+function openDoc(id){const d=docs.find(x=>x.id===id);if(!d)return;editing=Object.assign({},d);if(!$("#v-sum").classList.contains("hide"))editing._from="sum";fillCard();warn(null);show("card")}
 
 /* ---------- liste ---------- */
 const ICON={acquisto:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"></path></svg>',cliente:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',fattura:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0057FF" stroke-width="1.8" aria-hidden="true"><path d="M4 4h16v16H4z"></path><path d="M4 9h16"></path></svg>'};
@@ -214,6 +214,7 @@ function renderAll(){
   $("#archList").innerHTML=arch.map(d=>rowHTML(d,[])).join("")+totHTML(arch)||`<div class="empty">${esc(docs.length?t("noRes"):t("empty"))}</div>`;
   runSearch();
   if(!$("#v-exp").classList.contains("hide"))renderExp();
+  if(!$("#v-sum").classList.contains("hide"))renderSum();
 }
 document.addEventListener("click",e=>{const c=e.target.closest("#catChips button");if(c){catF=c.dataset.c;renderAll()}});
 $$("#archChips button").forEach(b=>b.onclick=()=>{$$("#archChips button").forEach(x=>x.classList.toggle("on",x===b));renderAll()});
@@ -301,3 +302,57 @@ $("#xEl").onclick=async()=>{busy(true);try{await exportPdf(perDocs(),"ELSTER Sch
   if(!isAdmin()){$("#shoot").classList.add("hide");$("#pickFile").classList.add("hide");$("#checkMail").classList.add("hide")}
   applyLang();await load();loadStatus();
 })();
+
+/* ---------- riepilogo per artista (D = Denis, G = Giova Tattoos, W = Waiblingen Ink) ---------- */
+Object.assign(IT,{sumOpen:"Riepilogo per artista: Denis, Giova Tattoos, Waiblingen Ink",sumTitle:"Riepilogo per artista",alMonth:"Mese",sumD:"Denis",sumG:"Giova Tattoos",sumW:"Waiblingen Ink",
+ sInc:"Incassato",sTat:"Tatuaggi",sAnz:"Acconti",sDocs:"ricevute",sTot:"Totale",sGiovaPaid:"Pagato a Giovanni (sua ricevuta)",sRest:"Resta a Waiblingen Ink",
+ sNoPay:"Ricevuta di Giovanni per questo mese non ancora arrivata: quando la fotografate, il conto si completa da solo.",sForWork:"per i lavori di",
+ sFromD:"Da Denis",sFromG:"Da Giova Tattoos (dopo la sua quota)",sFromGwait:"Da Giova Tattoos (manca la sua ricevuta)",sRent:"Affitto postazione e materiale",sExp:"Spese dello studio",sSaldo:"Saldo del mese",
+ sNote:"Contano solo i documenti nell'app: le spese senza ricevuta (affitto, banca) arriveranno con l'estratto conto. I privati non sono contati.",sConf:"da confermare",sEmpty:"Nessuna ricevuta in questo mese."});
+Object.assign(DE,{sumOpen:"Übersicht pro Künstler: Denis, Giova Tattoos, Waiblingen Ink",sumTitle:"Übersicht pro Künstler",alMonth:"Monat",sumD:"Denis",sumG:"Giova Tattoos",sumW:"Waiblingen Ink",
+ sInc:"Eingenommen",sTat:"Tattoos",sAnz:"Anzahlungen",sDocs:"Belege",sTot:"Summe",sGiovaPaid:"An Giovanni gezahlt (seine Rechnung)",sRest:"Bleibt bei Waiblingen Ink",
+ sNoPay:"Giovannis Rechnung für diesen Monat fehlt noch: sobald ihr sie fotografiert, ergänzt sich die Rechnung von selbst.",sForWork:"für die Arbeiten im",
+ sFromD:"Von Denis",sFromG:"Von Giova Tattoos (nach seinem Anteil)",sFromGwait:"Von Giova Tattoos (seine Rechnung fehlt)",sRent:"Platzmiete und Material",sExp:"Ausgaben des Studios",sSaldo:"Saldo des Monats",
+ sNote:"Es zählen nur Belege in der App: Ausgaben ohne Beleg (Miete, Bank) kommen mit dem Kontoauszug. Private Belege zählen nicht.",sConf:"zu bestätigen",sEmpty:"Keine Belege in diesem Monat."});
+let sumA="D";
+const mon=m=>{const s=new Date(m+"-15").toLocaleDateString(lang==="de"?"de-DE":"it-IT",{month:"long",year:"numeric"});return s.charAt(0).toUpperCase()+s.slice(1)};
+const prevMon=m=>{const d=new Date(m+"-15");d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7)};
+/* ricevuta di Giovanni allo studio: spesa con lettera G o fornitore Giovanni/Giova; vale per il mese precedente alla sua data */
+const isGiovaPay=d=>d.type!=="cliente"&&(d.art==="G"||/giovanni|giova\b|giova tattoo/i.test(d.vendor||""));
+function sumOf(l){return l.reduce((s,d)=>s+(+d.total||0),0)}
+function sumBox(title,list,extra){
+  return `<div class="list"><div class="row" style="cursor:default;background:#f8fafc"><span class="rmain"><b>${esc(title)}</b></span></div>${list.map(d=>rowHTML(d,[])).join("")||`<div class="empty">${esc(t("sEmpty"))}</div>`}<div class="tot"><div class="totr"><span>${esc(t("sTot"))} · ${list.length} ${esc(t("sDocs"))}</span><b class="in">${esc(eur(sumOf(list)))}</b></div>${extra||""}</div></div>`}
+function renderSum(){
+  const months=[...new Set(docs.map(d=>String(d.date||"").slice(0,7)).filter(Boolean))].sort().reverse();
+  const sel=$("#sumMonth"),cur=sel.value||todayISO().slice(0,7);
+  sel.innerHTML=months.map(m=>`<option value="${m}">${esc(mon(m))}</option>`).join("");
+  sel.value=months.includes(cur)?cur:(months[0]||"");const M=sel.value;
+  $$("#sumWho button").forEach(b=>b.classList.toggle("on",b.dataset.a===sumA));
+  const live=docs.filter(d=>!d.priv),inM=d=>String(d.date||"").startsWith(M);
+  const cli=a=>live.filter(d=>d.type==="cliente"&&d.art===a&&inM(d)).sort((x,y)=>String(x.date).localeCompare(String(y.date)));
+  const pays=live.filter(d=>isGiovaPay(d)&&prevMon(String(d.date||"").slice(0,7))===M);
+  const rr=(l,v,c)=>`<div class="totr"><span>${esc(l)}</span><b class="${c||""}">${esc(v)}</b></div>`;
+  let h="";
+  if(sumA!=="W"){
+    const l=cli(sumA),anz=l.filter(d=>d.cat==="anzahlung");
+    h+=`<div class="grid2"><div class="stat"><span>${esc(t("sInc"))}</span><span class="mono" style="color:var(--green)">${esc(eur(sumOf(l)))}</span></div><div class="stat"><span>${esc(t("sTat"))} · ${esc(t("sAnz"))}</span><span class="mono">${esc(eur(sumOf(l)-sumOf(anz)))}</span><span>${esc(t("sAnz"))}: ${esc(eur(sumOf(anz)))}</span></div></div>`;
+    let extra="";
+    if(sumA==="G")extra=pays.length?pays.map(p=>rr(t("sGiovaPaid")+" · "+(p.number||"")+" ("+fmtDate(p.date)+")","− "+eur(p.total))).join("")+rr(t("sRest"),eur(sumOf(l)-sumOf(pays)),"in"):`<div class="sumnote">${esc(t("sNoPay"))}</div>`;
+    h+=sumBox(t("sum"+sumA)+" · "+mon(M),l,extra);
+    if(sumA==="G"&&pays.length)h+=`<div class="list">${pays.map(d=>rowHTML(d,[])).join("")}</div>`;
+  }else{
+    const dI=sumOf(cli("D")),gI=sumOf(cli("G")),gP=sumOf(pays),rent=cli("W");
+    const exp=live.filter(d=>d.type!=="cliente"&&!isGiovaPay(d)&&inM(d));
+    const saldo=dI+(pays.length?gI-gP:gI)+sumOf(rent)-sumOf(exp);
+    h+=`<div class="grid2"><div class="stat"><span>${esc(t("sSaldo"))}</span><span class="mono" style="color:${saldo>=0?"var(--green)":"#B91C1C"}">${esc(eur(saldo))}</span></div><div class="stat"><span>${esc(t("sExp"))}</span><span class="mono">${esc(eur(sumOf(exp)))}</span></div></div>`;
+    h+=`<div class="list"><div class="tot" style="border-top:none">${rr(t("sFromD"),eur(dI),"in")}${rr(pays.length?t("sFromG"):t("sFromGwait"),eur(pays.length?gI-gP:gI),"in")}${rr(t("sRent"),eur(sumOf(rent)),"in")}${rr(t("sExp"),"− "+eur(sumOf(exp)))}${rr(t("sSaldo"),eur(saldo),saldo>=0?"in":"")}</div></div>`;
+    if(rent.length)h+=sumBox(t("sRent"),rent);
+    h+=`<div class="list"><div class="row" style="cursor:default;background:#f8fafc"><span class="rmain"><b>${esc(t("sExp"))}</b></span></div>${exp.sort((x,y)=>String(x.date).localeCompare(String(y.date))).map(d=>rowHTML(d,[])).join("")||`<div class="empty">${esc(t("sEmpty"))}</div>`}${totHTML(exp)}</div>`;
+  }
+  h+=`<div class="sumnote">${esc(t("sNote"))}</div>`;
+  $("#sumBody").innerHTML=h;
+}
+$("#sumBtn").onclick=()=>show("sum");
+$("#sumBack").onclick=()=>show("home");
+$("#sumMonth").onchange=renderSum;
+$$("#sumWho button").forEach(b=>b.onclick=()=>{sumA=b.dataset.a;renderSum()});
