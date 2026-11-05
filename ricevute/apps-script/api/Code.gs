@@ -266,7 +266,12 @@ TIPI
 CAMPI {"type":"cliente|fattura|acquisto","client":string|null,"vendor":string|null,"date":"YYYY-MM-DD"|null,"number":string|null,"total":number|null,"rate":19|7|0|null,"art":"D"|"G"|"W"|null,"note":string|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"unsure":[campi incerti]}
 Abbonamenti e servizi digitali (Google, Apple, Wix, Kalender.digital, Adobe) -> "software". Non inventare: se non leggibile metti null.`;
 function readImage_(b64, mime) {
-  return ai_([{ text: RECEIPT_PROMPT + (readImage_.extra || '') }, { inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }], true);
+  const r = ai_([{ text: RECEIPT_PROMPT + (readImage_.extra || '') }, { inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }], true);
+  if (r && r.type === 'cliente' && ['D', 'G', 'W'].indexOf(r.art) < 0) {
+    r.art = 'D'; r.artDefault = true;
+    r.unsure = (Array.isArray(r.unsure) ? r.unsure : []).concat('art');
+  }
+  return r;
 }
 
 /* ================= assistente ================= */
@@ -415,7 +420,7 @@ function importFolder() {
       let r; try { r = readImage_(Utilities.base64Encode(blob.getBytes()), m); } finally { readImage_.extra = ''; }
       if (r.type === 'estratto') { f.moveTo(extr); log_('importazione', 'estratto conto', '', name); continue; }
       const photo = m === mime ? f : DriveApp.getFolderById(prop('PHOTO_ID')).createFile(blob.setName(name.replace(/\.[^.]+$/, '') + '.jpg'));
-      const c = clean_({ type: r.type, art: r.art, client: r.client, vendor: r.vendor, number: r.number ? String(r.number).replace(/^\*/, '') : '', date: r.date, total: r.total, rate: r.rate == null ? 19 : r.rate, cat: r.category || (r.type === 'cliente' ? 'einnahme' : 'sonstiges'), due: r.due, iban: r.iban, note: [r.note, (r.unsure || []).length ? 'incerto: ' + r.unsure.join(', ') : ''].filter(Boolean).join(' · '), status: 'confirm' });
+      const c = clean_({ type: r.type, art: r.art, client: r.client, vendor: r.vendor, number: r.number ? String(r.number).replace(/^\*/, '') : '', date: r.date, total: r.total, rate: r.rate == null ? 19 : r.rate, cat: r.category || (r.type === 'cliente' ? 'einnahme' : 'sonstiges'), due: r.due, iban: r.iban, note: [r.note, r.artDefault ? 'lettera D/G mancante: messo D (Denis), da confermare' : '', (r.unsure || []).filter(x => x !== 'art' || !r.artDefault).length ? 'incerto: ' + r.unsure.filter(x => x !== 'art' || !r.artDefault).join(', ') : ''].filter(Boolean).join(' · '), status: 'confirm' });
       const now = new Date().toISOString();
       const rec = Object.assign({ id: Utilities.getUuid(), src: 'import', msgId: 'drive:' + f.getId(), mailUrl: f.getUrl(), owner: 'import', photoId: photo.getId(), mime: m, createdAt: now, createdBy: 'importazione iniziale', updatedAt: now, updatedBy: 'importazione iniziale' }, c);
       const l2 = LockService.getScriptLock(); l2.waitLock(20000);

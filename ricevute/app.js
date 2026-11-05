@@ -103,7 +103,9 @@ async function readAI(blob){
     const names={client:t("client"),vendor:t("vendor"),date:t("date"),number:t("number"),total:t("total"),art:t("artist"),artist:t("artist"),due:t("due")};
     const uns=(Array.isArray(r.unsure)?r.unsure:[]).map(k=>names[k]).filter(Boolean);
     if(f.total==null&&!uns.includes(names.total))uns.push(names.total);
-    warn(uns.length?t("lowConf")+[...new Set(uns)].join(", "):null);
+    const artMsg=r.artDefault?(lang==="de"?"Kein D/G auf der Quittung: D (Denis) eingesetzt, bitte prüfen. ":"Nessuna D/G sulla ricevuta: messo D (Denis), controlla. "):"";
+    const uns2=r.artDefault?uns.filter(x=>x!==t("artist")):uns;
+    warn(artMsg||uns2.length?artMsg+(uns2.length?t("lowConf")+[...new Set(uns2)].join(", "):""):null);
   }catch(e){if(editing===target&&e.message!=="login")warn(t("readFail")+" ("+e.message+")")}
   finally{st.classList.add("hide")}
 }
