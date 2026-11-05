@@ -361,6 +361,7 @@ function collect_(req) {
   const users = JSON.parse(prop('USERS') || '{}');
   if (users[i.email] !== 'admin' || i.email === Session.getEffectiveUser().getEmail()) return { error: 'login' };
   const m = req.mail || {};
+  if (m.test) { log_(i.email, 'collegamento email', '', 'collector pronto'); return { ok: true, email: i.email }; }
   if (listDocs_(true).some(d => d.msgId === String(m.msgId))) return { stored: false };
   return { stored: !!parseMail_(m, 'confirm', i.email) };
 }
