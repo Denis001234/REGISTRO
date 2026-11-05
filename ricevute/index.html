@@ -136,6 +136,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
         <div class="list" id="resList"></div>
       </div>
       <div id="homeBody" style="display:flex;flex-direction:column;gap:12px">
+        <button class="banner hide" id="dupBanner" style="background:#FEF2F2;border-color:#FECACA;color:#B91C1C"><span>⚠ <span id="dupN"></span></span><span>›</span></button>
         <button class="banner hide" id="confBanner"><span><span id="confN"></span> · <span data-t="toConfirm">Da confermare</span>: <span data-t="studio">Studio</span> / <span data-t="private">Privata</span></span><span>›</span></button>
         <button class="big" id="shoot">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-3h6l2 3h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
@@ -183,6 +184,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
         <div class="field" id="fDueRow"><label for="fDue" data-t="due">Scadenza</label><input id="fDue" type="date" class="mono"></div>
         <div class="field col"><label for="fNote" data-t="note">Note</label><textarea id="fNote" rows="2"></textarea></div>
       </div>
+      <div class="warn hide" id="dupBox" style="flex-direction:column;gap:8px;background:#FEF2F2;border-color:#FECACA;color:#B91C1C"><b id="dupTxt"></b><div id="dupList" class="list" style="width:100%"></div><button class="secondary" id="notDup" type="button">Non è un doppione</button></div>
       <div class="warn hide" id="cardWarn"><span id="cardWarnTxt"></span></div>
       <a id="mailLink" class="link hide" target="_blank" rel="noopener" href="#" style="text-decoration:none"></a>
       <button class="primary" id="save" data-t="save">Salva nell'archivio</button>
@@ -249,7 +251,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
   </div></nav>
 </div>
 <div id="toast" role="status"></div>
-<script src="config.js"></script>
-<script src="app.js"></script>
+<script src="config.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

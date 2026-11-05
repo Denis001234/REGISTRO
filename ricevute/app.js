@@ -122,6 +122,8 @@ async function fillCard(){
   $("#fTotal").value=fmtNum(d.total);$("#fRate").value=String(d.rate===""||d.rate==null?19:d.rate);$("#fCat").value=d.cat||"sonstiges";
   $("#fDue").value=String(d.due||"").slice(0,10);$("#fArt").value=d.art||"D";$("#fNote").value=(d.note||"")+(d.iban&&!String(d.note||"").includes(d.iban)?((d.note?" · ":"")+"IBAN "+d.iban):"");
   const ml=$("#mailLink");ml.classList.toggle("hide",!d.mailUrl);if(d.mailUrl){ml.href=d.mailUrl;ml.textContent=t("openMail")}
+  {const ds=(DUPS.get(d.id)||[]).map(id=>docs.find(x=>x.id===id)).filter(Boolean);$("#dupBox").classList.toggle("hide",!ds.length||!!d._new);
+   if(ds.length){$("#dupTxt").textContent=lang==="de"?"Mögliches Duplikat von:":"Possibile doppione di:";$("#dupList").innerHTML=ds.map(x=>rowHTML(x,[])).join("");$("#notDup").textContent=lang==="de"?"Kein Duplikat":"Non è un doppione";$("#notDup").classList.toggle("hide",!isAdmin())}}
   $("#confirmBox").classList.toggle("hide",!(d.status==="confirm"&&isAdmin()));
   {const imp=d.src==="import";$("#confirmBox b").textContent=imp?(lang==="de"?"Erstimport: Daten prüfen und bestätigen":"Importazione iniziale: controlla i dati e conferma"):t("confirmQ");$("#cStudio").textContent=imp?(lang==="de"?"Bestätigen ✓":"Confermato ✓"):t("studio");$("#cPriv").textContent=imp?(lang==="de"?"Privat":"Privata"):t("private")}
   $("#save").textContent=d._new?t("save"):t("update");$("#del").classList.toggle("hide",!!d._new||!isAdmin());
@@ -146,6 +148,7 @@ async function saveCard(extra){
   }catch(e){if(e.message!=="login")toast(e.message)}finally{btn.disabled=false}
 }
 $("#save").onclick=()=>saveCard();
+$("#notDup").onclick=()=>{$("#fNote").value=($("#fNote").value.trim()?$("#fNote").value.trim()+" · ":"")+NOTDUP;saveCard()};
 $("#cStudio").onclick=()=>saveCard({priv:false,status:"ok"});
 $("#cPriv").onclick=()=>saveCard({priv:true,status:"ok"});
 $("#del").onclick=async e=>{
@@ -157,6 +160,16 @@ function openDoc(id){const d=docs.find(x=>x.id===id);if(!d)return;editing=Object
 /* ---------- liste ---------- */
 const ICON={acquisto:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"></path></svg>',cliente:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',fattura:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0057FF" stroke-width="1.8" aria-hidden="true"><path d="M4 4h16v16H4z"></path><path d="M4 9h16"></path></svg>'};
 const ICLS={acquisto:"acq",cliente:"cli",fattura:"fat"};
+const NOTDUP="✓ non doppione";
+function dupKey(d){return norm(d.type==="cliente"?d.client:d.vendor).replace(/[^a-z0-9]/g,"").slice(0,8)}
+function findDups(){const map=new Map(),live=docs.filter(d=>!String(d.note||"").includes(NOTDUP));
+  for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++){const a=live[i],b=live[j];if(a.type!==b.type)continue;
+    const sameNum=a.number&&b.number&&norm(a.number)===norm(b.number)&&dupKey(a)===dupKey(b);
+    const days=Math.abs((new Date(a.date)-new Date(b.date))/864e5);
+    const same=Math.abs((+a.total||0)-(+b.total||0))<0.005&&dupKey(a)&&dupKey(a)===dupKey(b)&&days<=3&&!(a.number&&b.number&&norm(a.number)!==norm(b.number));
+    if(sameNum||same){(map.get(a.id)||map.set(a.id,[]).get(a.id)).push(b.id);(map.get(b.id)||map.set(b.id,[]).get(b.id)).push(a.id)}}
+  return map}
+let DUPS=new Map();
 function totHTML(list){
   if(!list.length)return "";let inn=0,out=0,priv=0;list.forEach(d=>{if(d.priv){priv++;return}if(d.type==="cliente")inn+=+d.total||0;else out+=+d.total||0});
   const de=lang==="de",parts=[];
@@ -167,7 +180,7 @@ function totHTML(list){
 }
 function rowHTML(d,terms){
   const title=d.type==="cliente"?(d.client||t("tCli")):(d.vendor||t(d.type==="fattura"?"tFat":"tAcq"));
-  const sub=[d.status==="confirm"?"● "+t("toConfirm"):"",d.priv?t("privTag"):"",d.src==="email"?"✉":d.src==="import"?"⇪":"",fmtDate(d.date),d.number?("Nr. "+d.number):"",CATS[d.cat]?.[L()]||"",d.type==="cliente"&&d.art?d.art:""].filter(Boolean).join(" · ");
+  const sub=[DUPS.has(d.id)?"⚠ "+(lang==="de"?"Duplikat?":"doppione?"):"",d.status==="confirm"?"● "+t("toConfirm"):"",d.priv?t("privTag"):"",d.src==="email"?"✉":d.src==="import"?"⇪":"",fmtDate(d.date),d.number?("Nr. "+d.number):"",CATS[d.cat]?.[L()]||"",d.type==="cliente"&&d.art?d.art:""].filter(Boolean).join(" · ");
   return `<button class="row" data-open="${esc(d.id)}"><span class="ico ${ICLS[d.type]||"acq"}">${ICON[d.type]||ICON.acquisto}</span><span class="rmain"><b>${hl(title,terms)}</b><small>${hl(sub,terms)}</small></span><span class="amt ${d.type==="cliente"?"in":""}"${d.priv?' style="opacity:.5"':""}>${d.type==="cliente"?"+":""}${esc(eur(d.total))}</span></button>`;
 }
 document.addEventListener("click",e=>{const r=e.target.closest("[data-open]");if(r)openDoc(r.dataset.open)});
@@ -178,6 +191,7 @@ const vkey=d=>d.type==="cliente"?"":norm(d.vendor).replace(/[^a-z]/g,"").slice(0
 function recurringVendors(){const m=new Map();docs.forEach(d=>{const k=vkey(d);if(!k)return;if(!m.has(k))m.set(k,new Set());m.get(k).add(String(d.date||"").slice(0,7))});return new Set([...m].filter(([,s])=>s.size>=2).map(([k])=>k))}
 function renderAll(){
   if(!user)return;
+  DUPS=findDups();$("#dupBanner").classList.toggle("hide",!DUPS.size||!isAdmin());$("#dupN").textContent=DUPS.size+(lang==="de"?" Belege sind mögliche Duplikate: prüfen":" documenti sono possibili doppioni: controlla");
   const m=todayISO().slice(0,7);let inn=0,out=0,conf=0;
   docs.forEach(d=>{if(d.status==="confirm")conf++;if(!counts(d))return;if(String(d.date||"").startsWith(m)){if(d.type==="cliente")inn+=+d.total||0;else out+=+d.total||0}});
   $("#sIn").textContent=eur(inn);$("#sOut").textContent=eur(out);
@@ -186,8 +200,8 @@ function renderAll(){
   $("#latest").innerHTML=sorted.slice(0,6).map(d=>rowHTML(d,[])).join("")+totHTML(sorted.slice(0,6))||`<div class="empty">${esc(t("empty"))}</div>`;
   const f=$("#archChips .on")?.dataset.f||"all",am=$("#archMonth").value,rec=recurringVendors();
   const used=[...new Set(docs.map(d=>d.cat).filter(Boolean))];
-  $("#catChips").innerHTML=[`<button data-c="" class="${catF===""?"on":""}">${esc(t("allCats"))}</button>`,conf?`<button data-c="__conf" class="${catF==="__conf"?"on":""}">${esc(t("toConfirm"))} (${conf})</button>`:"",rec.size?`<button data-c="__rec" class="${catF==="__rec"?"on":""}">${esc(t("recurring"))}</button>`:""].concat(Object.keys(CATS).filter(k=>used.includes(k)).map(k=>`<button data-c="${k}" class="${catF===k?"on":""}">${esc(CATS[k][L()])}</button>`)).join("");
-  const arch=sorted.filter(d=>(f==="all"||d.type===f)&&(!am||String(d.date||"").startsWith(am))&&(!catF||(catF==="__rec"?rec.has(vkey(d)):catF==="__conf"?d.status==="confirm":d.cat===catF)));
+  $("#catChips").innerHTML=[`<button data-c="" class="${catF===""?"on":""}">${esc(t("allCats"))}</button>`,conf?`<button data-c="__conf" class="${catF==="__conf"?"on":""}">${esc(t("toConfirm"))} (${conf})</button>`:"",DUPS.size?`<button data-c="__dup" class="${catF==="__dup"?"on":""}" style="color:#B91C1C">⚠ ${lang==="de"?"Duplikate":"Doppioni"} (${DUPS.size})</button>`:"",rec.size?`<button data-c="__rec" class="${catF==="__rec"?"on":""}">${esc(t("recurring"))}</button>`:""].concat(Object.keys(CATS).filter(k=>used.includes(k)).map(k=>`<button data-c="${k}" class="${catF===k?"on":""}">${esc(CATS[k][L()])}</button>`)).join("");
+  const arch=sorted.filter(d=>(f==="all"||d.type===f)&&(!am||String(d.date||"").startsWith(am))&&(!catF||(catF==="__rec"?rec.has(vkey(d)):catF==="__conf"?d.status==="confirm":catF==="__dup"?DUPS.has(d.id):d.cat===catF)));
   $("#archList").innerHTML=arch.map(d=>rowHTML(d,[])).join("")+totHTML(arch)||`<div class="empty">${esc(docs.length?t("noRes"):t("empty"))}</div>`;
   runSearch();
   if(!$("#v-exp").classList.contains("hide"))renderExp();
@@ -196,6 +210,7 @@ document.addEventListener("click",e=>{const c=e.target.closest("#catChips button
 $$("#archChips button").forEach(b=>b.onclick=()=>{$$("#archChips button").forEach(x=>x.classList.toggle("on",x===b));renderAll()});
 $("#archMonth").oninput=renderAll;
 $("#confBanner").onclick=()=>{catF="__conf";show("arch")};
+$("#dupBanner").onclick=()=>{catF="__dup";$("#archMonth").value="";show("arch")};
 $("#keyBtn").onclick=async()=>{const k=$("#keyIn").value.trim();if(!k)return;try{await api("setKey",{key:k});$("#keyIn").value="";toast("✓");loadStatus()}catch(e){toast(e.message)}};
 const tt=(i,d)=>lang==="de"?d:i;
 $("#claudeBtn").onclick=async()=>{const k=$("#claudeIn").value.trim();if(!k)return;const b=$("#claudeBtn");b.disabled=true;try{await api("setClaudeKey",{key:k});$("#claudeIn").value="";toast(tt("Chiave Claude provata e salvata ✓","Claude-Schlüssel geprüft und gespeichert ✓"));loadStatus()}catch(e){toast(e.message)}finally{b.disabled=false}};
