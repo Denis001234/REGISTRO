@@ -62,7 +62,9 @@ function doPost(e) {
     const need = () => { if (!admin) throw new Error('solo_lettura'); };
     switch (req.action) {
       case 'me': return out_({ email: user.email, role: user.role });
-      case 'list': return out_({ docs: listDocs_().filter(d => admin || !d.priv) });
+      case 'list': return out_({ docs: listDocs_().filter(d => admin || !d.priv), undo: admin ? undoInfo_() : null });
+      case 'undo': need(); return out_(undoRedo_(user.email, false));
+      case 'redo': need(); return out_(undoRedo_(user.email, true));
       case 'save': need(); return out_({ doc: saveDoc_(req.doc, req.photo, req.mime, user.email) });
       case 'del': need(); return out_(delDoc_(req.id, user.email));
       case 'read': need(); {
@@ -83,6 +85,15 @@ function doPost(e) {
         log_(user.email, 'chiave claude', '', 'aggiornata e provata'); return out_({ ok: true });
       }
       case 'startImport': need(); return out_(startImport_(user.email));
+      case 'track': {
+        const what = ['stampa', 'pdf', 'invio', 'excel'].indexOf(req.what) >= 0 ? req.what : 'pdf';
+        const ids = (Array.isArray(req.ids) ? req.ids : []).slice(0, 300).map(String);
+        const det = String(req.det || '').slice(0, 300);
+        const now = new Date().toISOString(), rows = (ids.length ? ids : ['']).map(id => [now, user.email, what, id, det]);
+        const lg = SpreadsheetApp.openById(prop('SHEET_ID')).getSheetByName('Log');
+        lg.getRange(lg.getLastRow() + 1, 1, rows.length, 5).setValues(rows);
+        return out_({ ok: true });
+      }
       case 'status': need(); return out_(status_());
       default: return out_({ error: 'azione_sconosciuta' });
     }
@@ -170,6 +181,7 @@ function saveDoc_(doc, photo, mime, who) {
     }
     const row = h.map(k => rec[k] === undefined ? '' : rec[k]);
     if (rowIdx > 0) sh.getRange(rowIdx + 1, 1, 1, h.length).setValues([row]); else sh.appendRow(row);
+    if (/@/.test(String(who))) record_(who, rec.id, before ? snap_(h, h.map(k => before[k])) : null, snap_(h, row), (before ? 'modifica' : 'nuovo') + ' · ' + [rec.client || rec.vendor, rec.total !== '' ? rec.total + ' €' : ''].filter(Boolean).join(' · '));
     if (before) {
       const f = x => x === undefined || x === null ? '' : x instanceof Date ? Utilities.formatDate(x, 'Europe/Berlin', 'yyyy-MM-dd') : String(x);
       const ch = Object.keys(c).filter(k => f(before[k]) !== f(c[k])).map(k => k + ': ' + f(before[k]) + ' -> ' + f(c[k]));
@@ -183,7 +195,9 @@ function delDoc_(id, who) {
   try {
     const sh = sheet_(); const v = sh.getDataRange().getValues(); const h = v[0];
     for (let i = 1; i < v.length; i++) if (v[i][h.indexOf('id')] === id) {
+      const beforeRow = v[i].slice();
       sh.getRange(i + 1, h.indexOf('deleted') + 1, 1, 3).setValues([[true, new Date().toISOString(), who]]);
+      if (/@/.test(String(who))) { const after = v[i].slice(); after[h.indexOf('deleted')] = true; after[h.indexOf('deletedAt')] = new Date().toISOString(); after[h.indexOf('deletedBy')] = who; record_(who, id, snap_(h, beforeRow), snap_(h, after), 'storno · ' + [v[i][h.indexOf('client')] || v[i][h.indexOf('vendor')], v[i][h.indexOf('total')] + ' €'].join(' · ')); }
       log_(who, 'storno', id, 'documento stornato, resta nell\'archivio come eliminato'); return { ok: true };
     }
     return { ok: false };
@@ -448,4 +462,58 @@ function importRun_() {
   P().setProperty('IMPORT_FAILS', JSON.stringify(fails));
   if (!left) { stopImport_(); P().deleteProperty('IMPORT_RUNS'); log_('importazione', 'finita', '', n + ' documenti in questo giro'); }
   return { imported: n, left };
+}
+
+/* ================= annulla / ripeti (ultime 24 ore, per tutti gli amministratori) ================= */
+function undoSheet_() {
+  const ss = SpreadsheetApp.openById(prop('SHEET_ID'));
+  let u = ss.getSheetByName('Undo');
+  if (!u) { u = ss.insertSheet('Undo'); u.appendRow(['op', 'quando', 'chi', 'id', 'prima', 'dopo', 'stato', 'descrizione', 'quando annullato']); }
+  return u;
+}
+function snap_(h, row) {
+  const o = {};
+  h.forEach((k, i) => { const x = row[i]; o[k] = x instanceof Date ? ((k === 'date' || k === 'due') ? Utilities.formatDate(x, 'Europe/Berlin', 'yyyy-MM-dd') : x.toISOString()) : (x === undefined ? '' : x); });
+  return o;
+}
+function record_(who, id, before, after, descr) {
+  const u = undoSheet_(), v = u.getDataRange().getValues();
+  for (let i = 1; i < v.length; i++) if (v[i][6] === 'annullato') u.getRange(i + 1, 7).setValue('superato');
+  u.appendRow([Utilities.getUuid(), new Date().toISOString(), who, id, before ? JSON.stringify(before) : '', JSON.stringify(after), 'fatto', String(descr).slice(0, 200), '']);
+}
+function undoInfo_() {
+  const v = undoSheet_().getDataRange().getValues(), lim = Date.now() - 24 * 3600 * 1000;
+  let un = null, re = null;
+  for (let i = v.length - 1; i >= 1; i--) {
+    const t = new Date(v[i][1]).getTime();
+    if (!un && v[i][6] === 'fatto' && t >= lim) un = { descr: v[i][7], who: v[i][2], when: new Date(v[i][1]).toISOString() };
+    if (v[i][6] === 'annullato' && t >= lim && (!re || new Date(v[i][8]).getTime() > new Date(re.undoneAt).getTime())) re = { descr: v[i][7], who: v[i][2], when: new Date(v[i][1]).toISOString(), undoneAt: new Date(v[i][8]).toISOString() };
+  }
+  return { undo: un, redo: re };
+}
+function undoRedo_(who, redo) {
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const u = undoSheet_(), v = u.getDataRange().getValues(), lim = Date.now() - 24 * 3600 * 1000;
+    let pick = -1;
+    for (let i = v.length - 1; i >= 1; i--) {
+      if (new Date(v[i][1]).getTime() < lim) continue;
+      if (!redo && v[i][6] === 'fatto') { pick = i; break; }
+      if (redo && v[i][6] === 'annullato' && (pick < 0 || new Date(v[i][8]).getTime() > new Date(v[pick][8]).getTime())) pick = i;
+    }
+    if (pick < 0) return { none: true, info: undoInfo_() };
+    const id = v[pick][3], target = redo ? JSON.parse(v[pick][5]) : (v[pick][4] ? JSON.parse(v[pick][4]) : null);
+    const sh = sheet_(), d = sh.getDataRange().getValues(), h = d[0], idc = h.indexOf('id');
+    for (let r = 1; r < d.length; r++) if (d[r][idc] === id) {
+      let row;
+      if (target) row = h.map((k, j) => target[k] === undefined ? d[r][j] : target[k]);
+      else { row = d[r].slice(); row[h.indexOf('deleted')] = true; row[h.indexOf('deletedAt')] = new Date().toISOString(); row[h.indexOf('deletedBy')] = who + ' (annulla)'; }
+      sh.getRange(r + 1, 1, 1, h.length).setValues([row]);
+      break;
+    }
+    u.getRange(pick + 1, 7).setValue(redo ? 'fatto' : 'annullato');
+    if (!redo) u.getRange(pick + 1, 9).setValue(new Date().toISOString());
+    log_(who, redo ? 'ripristinato' : 'annullato', id, v[pick][7] + ' (' + v[pick][2] + ')');
+    return { ok: true, descr: v[pick][7], id, info: undoInfo_() };
+  } finally { lock.releaseLock(); }
 }

@@ -58,7 +58,8 @@ $("#logout").onclick=logout;
 /* ---------- dati ---------- */
 let docs=[],editing=null;
 const isAdmin=()=>user&&user.role==="admin";
-async function load(){try{const j=await api("list");docs=j.docs||[];renderAll()}catch(e){if(e.message!=="login")toast(e.message)}}
+let undoInfo=null;
+async function load(){try{const j=await api("list");docs=j.docs||[];undoInfo=j.undo||null;renderAll()}catch(e){if(e.message!=="login")toast(e.message)}}
 
 /* ---------- viste ---------- */
 function show(v){
@@ -131,7 +132,7 @@ async function fillCard(){
    if(ds.length){$("#dupTxt").textContent=lang==="de"?"Mögliches Duplikat von:":"Possibile doppione di:";$("#dupList").innerHTML=ds.map(x=>rowHTML(x,[])).join("");$("#notDup").textContent=lang==="de"?"Kein Duplikat":"Non è un doppione";$("#notDup").classList.toggle("hide",!isAdmin())}}
   $("#confirmBox").classList.toggle("hide",!(d.status==="confirm"&&isAdmin()));
   {const imp=d.src==="import";$("#confirmBox b").textContent=imp?(lang==="de"?"Erstimport: Daten prüfen und bestätigen":"Importazione iniziale: controlla i dati e conferma"):t("confirmQ");$("#cStudio").textContent=imp?(lang==="de"?"Bestätigen ✓":"Confermato ✓"):t("studio");$("#cPriv").textContent=imp?(lang==="de"?"Privat":"Privata"):t("private")}
-  $("#save").textContent=d._new?t("save"):t("update");$("#del").classList.toggle("hide",!!d._new||!isAdmin());
+  $("#save").textContent=d._new?t("save"):t("update");$("#del").classList.toggle("hide",!!d._new||!isAdmin());$("#docOut").classList.toggle("hide",!!d._new);
   $("#save").classList.toggle("hide",!isAdmin());$$("#v-card input,#v-card select,#v-card textarea").forEach(e=>e.disabled=!isAdmin());
   $("#cardTitle").textContent=d._new?t("recognized"):t("detail");
   setType(d.type);
@@ -141,7 +142,7 @@ async function fillCard(){
     if(d.photoId&&!d._url)api("photo",{id:d.id}).then(j=>{if(editing!==d||!j.data)return;d._url="data:"+j.mime+";base64,"+j.data;d.isPdf=/pdf/.test(j.mime);ph.innerHTML=d.isPdf?`<a class="link" download="beleg.pdf" href="${d._url}">PDF</a>`:`<img alt="" src="${d._url}">`}).catch(()=>{});
   }
 }
-const WHAT={caricato:["caricato","hochgeladen"],nuovo:["nuovo","neu"],modifica:["modifica","geändert"],storno:["stornato","storniert"],importato:["importato","importiert"],"importazione avviata":["importazione avviata","Import gestartet"],"chiave gemini":["chiave Gemini","Gemini-Schlüssel"],"chiave claude":["chiave Claude","Claude-Schlüssel"],accesso:["accesso","Anmeldung"]};
+const WHAT={caricato:["caricato","hochgeladen"],nuovo:["nuovo","neu"],modifica:["modifica","geändert"],storno:["stornato","storniert"],importato:["importato","importiert"],"importazione avviata":["importazione avviata","Import gestartet"],"chiave gemini":["chiave Gemini","Gemini-Schlüssel"],"chiave claude":["chiave Claude","Claude-Schlüssel"],accesso:["accesso","Anmeldung"],stampa:["stampato","gedruckt"],pdf:["scaricato in PDF","als PDF geladen"],invio:["inviato","geteilt"],excel:["esportato in Excel","als Excel exportiert"],"collegamento email":["email collegata","E-Mail verbunden"]};
 const FIELD={type:["tipo","Art"],art:["chi","Wer"],client:["cliente","Kunde"],vendor:["fornitore","Lieferant"],number:["numero","Nummer"],date:["data","Datum"],total:["totale","Betrag"],rate:["IVA","MwSt"],cat:["categoria","Kategorie"],due:["scadenza","Fällig"],iban:["IBAN","IBAN"],note:["note","Notiz"],status:["stato","Status"],priv:["privata","privat"]};
 const whatT=w=>(WHAT[w]||[w,w])[L()];
 const detT=d=>String(d).replace(/\b(type|art|client|vendor|number|date|total|rate|cat|due|iban|note|status|priv):/g,(m,k)=>FIELD[k][L()]+":").replace("documento stornato, resta nell'archivio come eliminato",lang==="de"?"Beleg storniert, bleibt im Archiv als gelöscht":"documento stornato, resta nell'archivio come eliminato");
@@ -215,6 +216,7 @@ function renderAll(){
   runSearch();
   if(!$("#v-exp").classList.contains("hide"))renderExp();
   if(!$("#v-sum").classList.contains("hide"))renderSum();
+  renderUndo();
 }
 document.addEventListener("click",e=>{const c=e.target.closest("#catChips button");if(c){catF=c.dataset.c;renderAll()}});
 $$("#archChips button").forEach(b=>b.onclick=()=>{$$("#archChips button").forEach(x=>x.classList.toggle("on",x===b));renderAll()});
@@ -356,3 +358,119 @@ $("#sumBtn").onclick=()=>show("sum");
 $("#sumBack").onclick=()=>show("home");
 $("#sumMonth").onchange=renderSum;
 $$("#sumWho button").forEach(b=>b.onclick=()=>{sumA=b.dataset.a;renderSum()});
+
+/* ---------- stampa, PDF, invio: singolo documento, selezione multipla, modelli ---------- */
+Object.assign(IT,{oPrint:"Stampa",oPdf:"Scarica PDF",oShare:"Invia",oSelect:"Seleziona",oAll:"Tutti",oShareReady:"Pronto: tocca qui per inviare",oPreparing:"Preparo il documento…",oNoShare:"Su questo dispositivo l'invio diretto non c'è: ho scaricato il PDF.",oPick:"Seleziona almeno un documento",oSel:n=>n+(n===1?" selezionato":" selezionati"),
+ mTitle:"Modelli di riepilogo",mPhotos:"Aggiungi le foto delle ricevute",mOther:"Altri export",
+ mA:"A · Come Linda",mAd:"Lista per artista e spese, come i fogli a mano",mB:"B · Per la consulente",mBd:"Tutti i documenti, categorie, IVA, ELSTER (in tedesco)",mC:"C · Per artista",mCd:"Una pagina per Denis, Giova Tattoos, Waiblingen Ink",mD:"D · Una pagina",mDd:"Solo i totali del periodo",
+ pDate:"Data",pType:"Tipo",pWho:"Cliente / fornitore",pNum:"Numero",pCat:"Categoria",pTot:"Totale",pRate:"IVA",pNote:"Note",pArt:"Chi",pStatus:"Stato",pOk:"confermato",pConf:"da confermare",pOrigPdf:"Il documento originale è un PDF: lo trovi nell'app o nel download.",
+ pList:"Elenco documenti",pIncome:"Entrate",pExpenses:"Spese",pStudioExp:"Spese dello studio",pTotalIn:"Totale entrate",pTotalOut:"Totale spese",pDocs:"Documenti",pToConf:"Da confermare",pVat:"IVA da versare (stima)",pPeriod:"Periodo",pCreated:"Creato con l'app Ricevute il"});
+Object.assign(DE,{oPrint:"Drucken",oPdf:"PDF laden",oShare:"Teilen",oSelect:"Auswählen",oAll:"Alle",oShareReady:"Fertig: hier tippen zum Teilen",oPreparing:"Dokument wird vorbereitet…",oNoShare:"Direktes Teilen geht auf diesem Gerät nicht: PDF wurde geladen.",oPick:"Mindestens einen Beleg auswählen",oSel:n=>n+" ausgewählt",
+ mTitle:"Vorlagen für Übersichten",mPhotos:"Fotos der Belege anhängen",mOther:"Weitere Exporte",
+ mA:"A · Wie Linda",mAd:"Liste pro Künstler und Ausgaben, wie die Handzettel",mB:"B · Für die Steuerberaterin",mBd:"Alle Belege, Kategorien, USt, ELSTER (auf Deutsch)",mC:"C · Pro Künstler",mCd:"Eine Seite für Denis, Giova Tattoos, Waiblingen Ink",mD:"D · Eine Seite",mDd:"Nur die Summen des Zeitraums",
+ pDate:"Datum",pType:"Art",pWho:"Kunde / Lieferant",pNum:"Nummer",pCat:"Kategorie",pTot:"Betrag",pRate:"MwSt",pNote:"Notiz",pArt:"Wer",pStatus:"Status",pOk:"bestätigt",pConf:"zu bestätigen",pOrigPdf:"Das Original ist ein PDF: in der App oder im Download.",
+ pList:"Belegliste",pIncome:"Einnahmen",pExpenses:"Ausgaben",pStudioExp:"Ausgaben des Studios",pTotalIn:"Summe Einnahmen",pTotalOut:"Summe Ausgaben",pDocs:"Belege",pToConf:"Zu bestätigen",pVat:"USt-Zahllast (Schätzung)",pPeriod:"Zeitraum",pCreated:"Erstellt mit der App Belege am"});
+const GBR="Denis Cicala & Linda Salihu-Cicala GbR · Lange Straße 10 · 71332 Waiblingen";
+const whoOf=d=>d.type==="cliente"?(d.client||t("tCli")):(d.vendor||t(d.type==="fattura"?"tFat":"tAcq"));
+const typeOf=d=>t(d.type==="cliente"?"tCli":d.type==="fattura"?"tFat":"tAcq");
+const safe=s=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^\w\-]+/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"").slice(0,40);
+const photoCache=new Map();
+async function photoOf(d){if(!d.photoId)return null;if(photoCache.has(d.id))return photoCache.get(d.id);const j=await api("photo",{id:d.id});const r=j&&j.data?{mime:j.mime,url:"data:"+j.mime+";base64,"+j.data,b64:j.data}:null;photoCache.set(d.id,r);return r}
+const imgSize=url=>new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok({w:i.width,h:i.height});i.onerror=ko;i.src=url});
+/* blocchi neutri: {h1},{h2},{p},{kv:[[k,v]]},{table:{head,rows,foot,num:[indici colonne numeriche]}},{img:{url,cap}},{pb:1} */
+function docKV(d){return[[t("pDate"),fmtDate(d.date)],[t("pType"),typeOf(d)],[t("pWho"),whoOf(d)],[t("pNum"),d.number||""],[t("pCat"),CATS[d.cat]?.[L()]||""],d.type==="cliente"&&d.art?[t("pArt"),({D:"Denis",G:"Giova Tattoos",W:"Waiblingen Ink"})[d.art]||d.art]:null,[t("pTot"),eur(d.total)],[t("pRate"),d.rate===""||d.rate==null?"":d.rate+" %"],[t("pStatus"),d.status==="confirm"?t("pConf"):t("pOk")],d.note?[t("pNote"),d.note]:null].filter(x=>x&&x[1]!=="")}
+async function docBlocks(d,first){const b=[];if(!first)b.push({pb:1});b.push({h2:whoOf(d)+" · "+eur(d.total)},{kv:docKV(d)});try{const p=await photoOf(d);if(p&&!/pdf/.test(p.mime))b.push({img:{url:p.url}});else if(p)b.push({p:t("pOrigPdf")})}catch(e){}return b}
+function head(title,sub){return[{h1:"Waiblingen Ink"},{p:GBR},{h2:title},sub?{p:sub}:null].filter(Boolean)}
+function listTable(list){return{table:{head:[t("pDate"),t("pType"),t("pWho"),t("pNum"),t("pTot")],rows:list.map(d=>[fmtDate(d.date),typeOf(d),whoOf(d)+(d.status==="confirm"?" ●":""),d.number||"",(d.type==="cliente"?"+":"")+eur(d.total)]),foot:[["","","","",""]].slice(0,0),num:[4]}}}
+function htmlOf(blocks){return blocks.map(b=>b.pb?'<div class="pb"></div>':b.h1?`<h1 style="font-size:18pt;margin:0">${esc(b.h1)}</h1>`:b.h2?`<h3>${esc(b.h2)}</h3>`:b.h3?`<h4>${esc(b.h3)}</h4>`:b.p?`<p style="margin:2px 0;color:#555">${esc(b.p)}</p>`:b.kv?`<table>${b.kv.map(([k,v])=>`<tr><th style="width:35%">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("")}</table>`:b.table?`<table><tr>${b.table.head.map((x,i)=>`<th class="${(b.table.num||[]).includes(i)?"m":""}">${esc(x)}</th>`).join("")}</tr>${b.table.rows.map(r=>`<tr>${r.map((x,i)=>`<td class="${(b.table.num||[]).includes(i)?"m":""}">${esc(x)}</td>`).join("")}</tr>`).join("")}${(b.table.foot||[]).map(r=>`<tr>${r.map((x,i)=>`<th class="${(b.table.num||[]).includes(i)?"m":""}">${esc(x)}</th>`).join("")}</tr>`).join("")}</table>`:b.img?`<img src="${b.img.url}" alt="">`:"").join("")}
+const pdfTxt=s=>String(s??"").replace(/\u2212/g,"-").replace(/\u25CF/g,"*").replace(/[\u2014\u2013]/g,"-").replace(/\u202F/g," ");
+const pdfClean=v=>Array.isArray(v)?v.map(pdfClean):v&&typeof v==="object"?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,k==="url"?x:pdfClean(x)])):typeof v==="string"?pdfTxt(v):v;
+async function pdfOf(blocks){blocks=pdfClean(blocks);
+  await lib("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");await lib("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+  const doc=new window.jspdf.jsPDF({unit:"mm",format:"a4"}),blue=[0,87,255],W=182,PH=283;let y=14;
+  const room=n=>{if(y+n>PH){doc.addPage();y=14}};
+  const txt=(s,size,bold,color)=>{doc.setFontSize(size);doc.setFont("helvetica",bold?"bold":"normal");doc.setTextColor(...(color||[0,0,0]));const ls=doc.splitTextToSize(String(s),W);room(ls.length*size*0.42+2);doc.text(ls,14,y+size*0.35);y+=ls.length*size*0.42+2;doc.setTextColor(0)};
+  for(const b of blocks){
+    if(b.pb){doc.addPage();y=14}
+    else if(b.h1)txt(b.h1,16,true);else if(b.h2)txt(b.h2,12,true);else if(b.h3)txt(b.h3,10.5,true);else if(b.p)txt(b.p,9,false,[90,90,90]);
+    else if(b.kv){doc.autoTable({startY:y,body:b.kv,theme:"plain",styles:{fontSize:9.5,cellPadding:1.2},columnStyles:{0:{fontStyle:"bold",cellWidth:45}}});y=doc.lastAutoTable.finalY+3}
+    else if(b.table){const cs={};(b.table.num||[]).forEach(i=>cs[i]={halign:"right"});doc.autoTable({startY:y,head:[b.table.head],body:b.table.rows,foot:b.table.foot&&b.table.foot.length?b.table.foot:undefined,headStyles:{fillColor:blue},footStyles:{fillColor:[241,245,249],textColor:20},styles:{fontSize:8.5,cellPadding:1.4},columnStyles:cs,showFoot:"lastPage",didParseCell:c=>{if((b.table.num||[]).includes(c.column.index))c.cell.styles.halign="right"}});y=doc.lastAutoTable.finalY+4}
+    else if(b.img){try{const s=await imgSize(b.img.url);const k=Math.min(W/s.w,(PH-y-4)/s.h,1);if(s.h*k<60){doc.addPage();y=14}const k2=Math.min(W/s.w,(PH-y-4)/s.h);doc.addImage(b.img.url,/png/.test(b.img.url.slice(5,20))?"PNG":"JPEG",14,y,s.w*k2,s.h*k2);y+=s.h*k2+4}catch(e){}}
+  }
+  const n=doc.getNumberOfPages();for(let i=1;i<=n;i++){doc.setPage(i);doc.setFontSize(7.5);doc.setTextColor(130);doc.text(t("pCreated")+" "+new Date().toLocaleString(lang==="de"?"de-DE":"it-IT")+(user?" · "+user.email:"")+" · "+i+"/"+n,14,292)}
+  return doc.output("blob");
+}
+function printHTML(html){const pa=$("#printArea");pa.innerHTML=html;const imgs=[...pa.querySelectorAll("img")];Promise.all(imgs.map(i=>i.complete?1:new Promise(r=>{i.onload=i.onerror=r}))).then(()=>{window.print();setTimeout(()=>pa.innerHTML="",1500)})}
+async function shareFile(blob,name){const f=new File([blob],name,{type:"application/pdf"});
+  if(!(navigator.canShare&&navigator.canShare({files:[f]}))){dl(name,blob);toast(t("oNoShare"));return}
+  try{await navigator.share({files:[f],title:name})}catch(e){if(e&&e.name==="AbortError")return;const b=$("#shareReady");b.classList.remove("hide");b.onclick=async()=>{b.classList.add("hide");try{await navigator.share({files:[f],title:name})}catch(_){}}}}
+let outBusy=false;
+async function output(kind,blocksFn,name,ids,det){
+  if(outBusy)return;outBusy=true;toast(t("oPreparing"));
+  try{const blocks=await blocksFn();
+    if(kind==="print")printHTML(htmlOf(blocks));
+    else{const blob=await pdfOf(blocks);if(kind==="share")await shareFile(blob,name);else dl(name,blob)}
+    api("track",{what:kind==="print"?"stampa":kind==="share"?"invio":"pdf",ids:ids||[],det:det||name}).catch(()=>{});
+  }catch(e){toast(errText(e.message))}finally{outBusy=false}
+}
+/* singolo documento */
+const docName=d=>"Beleg_"+(d.date||"")+"_"+safe(whoOf(d))+(d.number?"_"+safe(d.number):"")+".pdf";
+function docOut(kind){const d=editing;if(!d||d._new)return;
+  if(kind!=="print"&&d.photoId&&/pdf/.test(d.mime||"")){(async()=>{try{const p=await photoOf(d);const bytes=Uint8Array.from(atob(p.b64),c=>c.charCodeAt(0));const blob=new Blob([bytes],{type:"application/pdf"});if(kind==="share")await shareFile(blob,docName(d));else dl(docName(d),blob);api("track",{what:kind==="share"?"invio":"pdf",ids:[d.id],det:docName(d)}).catch(()=>{})}catch(e){toast(errText(e.message))}})();return}
+  output(kind,async()=>head(typeOf(d)+" · "+fmtDate(d.date)).concat(await docBlocks(d,true)),docName(d),[d.id],docName(d));
+}
+$("#dPrint").onclick=()=>docOut("print");$("#dPdf").onclick=()=>docOut("pdf");$("#dShare").onclick=()=>docOut("share");
+/* selezione multipla in Archivio e Cerca */
+const picked=new Set();let selMode=false;
+function setSel(on){selMode=on;if(!on)picked.clear();document.body.classList.toggle("selmode",on);$("#selBar").classList.toggle("hide",!on);paintSel()}
+function paintSel(){$$(".row[data-open]").forEach(r=>r.classList.toggle("picked",picked.has(r.dataset.open)));$("#selN").textContent=t("oSel")(picked.size)}
+document.addEventListener("click",e=>{if(!selMode)return;const r=e.target.closest("#archList [data-open],#resList [data-open]");if(!r)return;e.stopImmediatePropagation();e.preventDefault();const id=r.dataset.open;picked.has(id)?picked.delete(id):picked.add(id);paintSel()},true);
+$$(".selBtn").forEach(b=>b.onclick=()=>setSel(!selMode));
+$("#sCancel").onclick=()=>setSel(false);
+$("#sAll").onclick=()=>{const box=$("#v-arch").classList.contains("hide")?"#resList":"#archList";$$(box+" [data-open]").forEach(r=>picked.add(r.dataset.open));paintSel()};
+function selOut(kind){const list=docs.filter(d=>picked.has(d.id)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));if(!list.length)return toast(t("oPick"));
+  const name="Belege_"+list.length+"_"+todayISO()+".pdf";
+  output(kind,async()=>{let b=head(t("pList")+" · "+list.length+" "+t("pDocs")).concat([listTable(list)]);const inn=list.filter(d=>d.type==="cliente"),out=list.filter(d=>d.type!=="cliente");b.push({kv:[[t("pTotalIn"),eur(sumOf(inn))],[t("pTotalOut"),eur(sumOf(out))]]});for(const d of list)b=b.concat(await docBlocks(d,false));return b},name,list.map(d=>d.id),name)}
+$("#sPrint").onclick=()=>selOut("print");$("#sPdf").onclick=()=>selOut("pdf");$("#sShare").onclick=()=>selOut("share");
+const _show=show;show=function(v){if(selMode&&v!=="arch"&&v!=="home")setSel(false);_show(v);if(selMode)paintSel()};
+/* modelli A, B, C, D per il periodo dell'Export */
+let model="A";
+function periodData(){const p=$("#expPer").value,live=docs.filter(d=>!d.priv),inP=d=>inPer(d,p),byDate=(x,y)=>String(x.date).localeCompare(String(y.date));
+  const cli=a=>live.filter(d=>d.type==="cliente"&&d.art===a&&inP(d)).sort(byDate);
+  const pays=live.filter(d=>isGiovaPay(d)&&inPer({date:prevMon(String(d.date||"").slice(0,7))+"-15"},p)).sort(byDate);
+  const exp=live.filter(d=>d.type!=="cliente"&&!isGiovaPay(d)&&inP(d)).sort(byDate);
+  const all=live.filter(inP).sort(byDate);
+  return{p,label:perLabel(),D:cli("D"),G:cli("G"),W:cli("W"),noArt:live.filter(d=>d.type==="cliente"&&!["D","G","W"].includes(d.art)&&inP(d)),pays,exp,all}}
+const cliRows=l=>l.map(d=>[fmtDate(d.date),(d.client||"")+(d.cat==="anzahlung"?" (Anz.)":"")+(d.status==="confirm"?" ●":""),d.number||"",eur(d.total)]);
+function artTable(title,l,extra){return[{h3:title},{table:{head:[t("pDate"),t("pWho"),t("pNum"),t("pTot")],rows:cliRows(l),foot:[["",t("sTot")+" · "+l.length,"",eur(sumOf(l))]].concat(extra||[]),num:[3]}}]}
+function giovaExtra(P){const g=sumOf(P.G);return P.pays.length?P.pays.map(p=>["",t("sGiovaPaid"),p.number||"","− "+eur(p.total)]).concat([["",t("sRest"),"",eur(g-sumOf(P.pays))]]):[["",t("sNoPay").split(":")[0],"",""]]}
+function expTable(l){return[{h3:t("pStudioExp")},{table:{head:[t("pDate"),t("pWho"),t("pCat"),t("pTot")],rows:l.map(d=>[fmtDate(d.date),(d.vendor||"")+(d.status==="confirm"?" ●":""),CATS[d.cat]?.[L()]||"",eur(d.total)]),foot:[["",t("sTot")+" · "+l.length,"",eur(sumOf(l))]],num:[3]}}]}
+function totalsKV(P){const dI=sumOf(P.D),gI=sumOf(P.G),gP=sumOf(P.pays),w=sumOf(P.W),ex=sumOf(P.exp),e=elster(P.all);const saldo=dI+gI-gP+w-ex;
+  return[[t("sumD"),eur(dI)],[t("sumG"),eur(gI)],[t("sGiovaPaid"),P.pays.length?"− "+eur(gP):"—"],[t("sRent"),eur(w)],[t("pStudioExp"),"− "+eur(ex)],[t("sSaldo"),eur(saldo)],[t("pVat"),eur(e.k83)],[t("pDocs"),String(P.all.length)],[t("pToConf"),String(P.all.filter(d=>d.status==="confirm").length)]]}
+function modelBlocks(m,P){const sub=t("pPeriod")+": "+P.label;
+  if(m==="A")return head(t("mA").replace(/^A · /,"")+" · "+P.label).concat(artTable(t("sumD"),P.D),artTable(t("sumG"),P.G,giovaExtra(P)),P.W.length?artTable(t("sRent"),P.W):[],P.noArt.length?artTable("?",P.noArt):[],expTable(P.exp));
+  if(m==="B"){const rows=rowsDE(P.all);const cats={};P.all.forEach(d=>{const k=(d.type==="cliente"?"Einnahmen · ":"Ausgaben · ")+(CATS[d.cat]?.[1]||d.cat);const r=d.rate===""||d.rate==null?null:+d.rate,tot=+d.total||0;cats[k]=cats[k]||[0,0,0];cats[k][0]+=tot;if(r===19||r===7){cats[k][1]+=tot/(1+r/100);cats[k][2]+=tot-tot/(1+r/100)}});const e=elster(P.all);const de=n=>(Number(n)||0).toLocaleString("de-DE",{style:"currency",currency:"EUR"});
+    return[{h1:"Waiblingen Ink"},{p:GBR},{h2:"Belege für die Buchhaltung · "+P.label},{table:{head:["Datum","Art","Kunde / Lieferant","Nr.","Kategorie","Brutto","MwSt %"],rows:rows.map(r=>[r.Datum,r.Art,r["Kunde / Lieferant"],r.Belegnummer,r.Kategorie,r.Brutto===""?"":de(r.Brutto),r["MwSt %"]]),num:[5]}},{h3:"Summen nach Kategorie"},{table:{head:["Kategorie","Brutto","Netto","MwSt"],rows:Object.keys(cats).sort().map(k=>[k,de(cats[k][0]),de(cats[k][1]),de(cats[k][2])]),num:[1,2,3]}},{h3:"Umsatzsteuer-Voranmeldung (Schätzung)"},{table:{head:["Kz","","Betrag"],rows:[["81","Umsätze 19 % netto",de(e.k81)],["86","Umsätze 7 % netto",de(e.k86)],["66","Vorsteuer",de(e.k66)],["83","Vorauszahlung",de(e.k83)]],num:[2]}},{p:"Schätzung. "+e.noRate+" Einkäufe ohne MwSt-Satz nicht berücksichtigt. Private Belege ausgeschlossen."}]}
+  if(m==="C")return head(t("mC").replace(/^C · /,"")+" · "+P.label).concat(artTable(t("sumD"),P.D),[{pb:1}],artTable(t("sumG"),P.G,giovaExtra(P)),[{pb:1},{h3:t("sumW")},{kv:totalsKV(P)}],P.W.length?artTable(t("sRent"),P.W):[],expTable(P.exp));
+  return head(t("mD").replace(/^D · /,"")+" · "+P.label,sub).concat([{kv:totalsKV(P)},{p:t("sNote")}]);
+}
+async function modelAll(){const P=periodData();let b=modelBlocks(model,P);if($("#mPhotos").checked){const l=model==="B"?P.all:P.all;for(const d of l)if(d.photoId)b=b.concat(await docBlocks(d,false))}return b}
+function renderModels(){if(!$("#models"))return;$("#models").innerHTML=["A","B","C","D"].map(k=>`<button type="button" class="model ${model===k?"on":""}" data-m="${k}"><b>${esc(t("m"+k))}</b><small>${esc(t("m"+k+"d"))}</small></button>`).join("");$("#mPrev").innerHTML=docs.length?htmlOf(modelBlocks(model,periodData())):""}
+document.addEventListener("click",e=>{const b=e.target.closest("#models [data-m]");if(b){model=b.dataset.m;renderModels()}});
+const mName=()=>"Waiblingen-Ink_Modell-"+model+"_"+($("#expPer").value||"")+".pdf";
+$("#mPrint").onclick=()=>output("print",modelAll,mName(),[],t("m"+model)+" · "+perLabel());
+$("#mPdf").onclick=()=>output("pdf",modelAll,mName(),[],t("m"+model)+" · "+perLabel());
+$("#mShare").onclick=()=>output("share",modelAll,mName(),[],t("m"+model)+" · "+perLabel());
+const _renderExp=renderExp;renderExp=function(){_renderExp();renderModels()};
+$("#expPer").onchange=renderExp;
+
+/* ---------- annulla / ripeti: ultime 24 ore, operazioni di tutti gli amministratori ---------- */
+Object.assign(IT,{uUndo:"Annulla",uRedo:"Ripeti",uNone:"niente da annullare",uNoRedo:"niente da ripetere",uDone:"Annullato: ",uRedone:"Ripristinato: ",uBy:"di "});
+Object.assign(DE,{uUndo:"Rückgängig",uRedo:"Wiederholen",uNone:"nichts rückgängig zu machen",uNoRedo:"nichts zu wiederholen",uDone:"Rückgängig gemacht: ",uRedone:"Wiederhergestellt: ",uBy:"von "});
+const uDescr=x=>{if(!x)return"";const dt=new Date(x.when);const time=dt.toLocaleTimeString(lang==="de"?"de-DE":"it-IT",{hour:"2-digit",minute:"2-digit"});const d=String(x.descr||"").replace(/^modifica/,lang==="de"?"Änderung":"modifica").replace(/^nuovo/,lang==="de"?"neu":"nuovo").replace(/^storno/,lang==="de"?"Storno":"storno");return d+" · "+String(x.who||"").split("@")[0]+" "+time};
+function renderUndo(){const b=$("#undoBar");if(!b)return;b.classList.toggle("hide",!isAdmin());const u=undoInfo&&undoInfo.undo,r=undoInfo&&undoInfo.redo;
+  $("#undoBtn").disabled=!u;$("#redoBtn").disabled=!r;$("#undoTxt").textContent=u?uDescr(u):t("uNone");$("#redoTxt").textContent=r?uDescr(r):t("uNoRedo")}
+let undoBusy=false;
+async function doUndo(redo){if(undoBusy)return;undoBusy=true;$("#undoBtn").disabled=$("#redoBtn").disabled=true;
+  try{const j=await api(redo?"redo":"undo");if(j.ok)toast(t(redo?"uRedone":"uDone")+uDescr({descr:j.descr,who:"",when:new Date()}).split(" · ").slice(0,-1).join(" · "));await load()}catch(e){toast(e.message)}finally{undoBusy=false;renderUndo()}}
+$("#undoBtn").onclick=()=>doUndo(false);$("#redoBtn").onclick=()=>doUndo(true);
