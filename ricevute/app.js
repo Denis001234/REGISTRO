@@ -8,6 +8,7 @@ const DE = {loginTitle:"Belege und Rechnungen",alSearch:"Suchen",alBack:"Zurück
  empty:"Noch keine Belege.",noRes:"Nichts gefunden.",results:n=>n+" Ergebnisse",saved:"Gespeichert ✓",updated:"Aktualisiert ✓",deleted:"Storniert",needTotal:"Bitte den Gesamtbetrag eintragen.",sure:"Wirklich stornieren? Nochmal tippen.",readFail:"Lesen nicht möglich: bitte von Hand eintragen.",lowConf:"Bitte prüfen, unsicher gelesen: ",detail:"Beleg",allCats:"Alle Kategorien",recurring:"Wiederkehrend",toConfirm:"Zu bestätigen",fromMail:"aus E-Mail",openMail:"Original-E-Mail öffnen",confirmQ:"Aus dem Postfach denisrider00: Studio oder privat?",studio:"Studio",private:"Privat",privTag:"privat",history:"Verlauf",login:"Mit Google anmelden",loginTxt:"Nur eingeladene Personen haben Zutritt.",logout:"Abmelden",checkMail:"E-Mails jetzt prüfen",mailDone:n=>n+" neue Belege aus E-Mails",loading:"Lädt…",offline:"Server nicht erreichbar.",askPh:"z. B. Wie viel haben wir im Oktober eingenommen?",askBtn:"Fragen",askHint:"Frag das Archiv: Einnahmen, Ausgaben, Kunden, Lieferanten, Zeiträume.",sumIn:"Einnahmen",sumOut:"Ausgaben",docsN:"Belege",period:"Zeitraum",noRate:"Ohne MwSt-Satz",elsterHead:"Schätzung für ELSTER (Umsatzsteuer-Voranmeldung)",k81:"Kz 81 · Umsätze 19 % (netto)",k86:"Kz 86 · Umsätze 7 % (netto)",k66:"Kz 66 · Vorsteuer",k83:"Kz 83 · Vorauszahlung",elsterNote:"Nur eine Schätzung, die echte Berechnung macht die Steuerberaterin. Private Ausgaben und Einkäufe ohne MwSt-Satz werden nicht gezählt.",xPdf:"PDF mit Fotos",xXls:"Excel",xEl:"ELSTER-Blatt (PDF)",preparing:"Wird vorbereitet…",quarter:"Quartal",readonly:"Nur lesen: du kannst nichts ändern.",created:"erstellt",by:"von"};
 const IT = {viewer:"Sola lettura",admin:"admin",recognized:"Documento riconosciuto",sheetLink:"Foglio archivio",folderLink:"Cartella Drive",results:n=>n+(n===1?" risultato":" risultati"),empty:"Ancora nessun documento.",noRes:"Nessun risultato.",saved:"Salvato ✓",updated:"Aggiornato ✓",deleted:"Stornato",needTotal:"Inserisci il totale.",sure:"Sicuro? Tocca di nuovo per stornare.",readFail:"Lettura non riuscita: inserisci i dati a mano.",lowConf:"Controlla, letto con poca sicurezza: ",update:"Salva le modifiche",detail:"Documento",allCats:"Tutte le categorie",recurring:"Ricorrenti",toConfirm:"Da confermare",fromMail:"da email",openMail:"Apri l'email originale",confirmQ:"Arrivata da denisrider00: è dello studio o privata?",studio:"Studio",private:"Privata",privTag:"privata",history:"Cronologia",login:"Accedi con Google",loginTxt:"Entra solo chi è stato invitato.",logout:"Esci",mailDone:n=>n+" nuovi documenti dalle email",loading:"Carico…",offline:"Server non raggiungibile.",askPh:"es. Quanto abbiamo incassato a ottobre?",askHint:"Chiedi all'archivio: incassi, spese, clienti, fornitori, periodi.",sumIn:"Entrate",sumOut:"Uscite",preparing:"Preparo il file…",quarter:"Trimestre",readonly:"Sola lettura: non puoi modificare.",created:"creato",by:"da"};
 const CATS={einnahme:["Incasso tatuaggio","Tattoo Einnahme"],anzahlung:["Acconto","Anzahlung"],platzmiete:["Affitto postazione tatuatori","Platzmiete Tätowierer"],material:["Materiale tatuaggio","Tattoo Material"],miete:["Affitto","Miete"],energie:["Corrente, gas, acqua","Strom, Gas, Wasser"],telefon:["Telefono e internet","Telefon und Internet"],software:["Abbonamenti e software","Abos und Software"],versicherung:["Assicurazioni","Versicherungen"],werbung:["Pubblicità","Werbung"],fahrzeug:["Auto e carburante","Fahrzeug und Tanken"],buero:["Ufficio e pulizia","Büro und Reinigung"],gebuehren:["Commissioni di pagamento","Zahlungsgebühren"],steuer:["Tasse e contributi","Steuern und Beiträge"],beratung:["Consulenze","Beratung"],sonstiges:["Altro","Sonstiges"]};
+Object.assign(DE,{agName:"Mach das für mich",agHint:"Sag mir, was du brauchst: ich bereite die Liste, das PDF oder die Änderungen vor. Bevor ich etwas ändere, zeige ich dir alles und warte auf dein OK.",agSaved:"Gespeicherte Aufträge",agEx:"Beispiele",ag1:"Tattoos am Mittwoch und Freitag von Denis und Giovanni im Oktober, mit PDF",ag2:"Alle Tankbelege von diesem Jahr",ag3:"Ausgaben über 200 € im September",ag4:"Alle Apple Abos in die Kategorie Software"});
 const ITX={};$$("[data-t]").forEach(e=>{ITX[e.dataset.t]=e.textContent});$$("[data-al]").forEach(e=>{ITX[e.dataset.al]=e.getAttribute("aria-label")});$$("[data-ph]").forEach(e=>{ITX[e.dataset.ph]=e.placeholder});
 let lang="it";try{lang=localStorage.getItem("wi-lang")||"it"}catch(e){}
 const t=k=>{if(lang==="de"&&DE[k]!==undefined)return DE[k];if(IT[k]!==undefined)return IT[k];return ITX[k]!==undefined?ITX[k]:k};
@@ -58,8 +59,8 @@ $("#logout").onclick=logout;
 /* ---------- dati ---------- */
 let docs=[],editing=null;
 const isAdmin=()=>user&&user.role==="admin";
-let undoInfo=null;
-async function load(){try{const j=await api("list");docs=j.docs||[];undoInfo=j.undo||null;renderAll()}catch(e){if(e.message!=="login")toast(e.message)}}
+let undoInfo=null,savedReqs=[];
+async function load(){try{const j=await api("list");docs=j.docs||[];undoInfo=j.undo||null;savedReqs=j.saved||[];renderAll()}catch(e){if(e.message!=="login")toast(e.message)}}
 
 /* ---------- viste ---------- */
 function show(v){
@@ -506,9 +507,10 @@ $("#elPdf").onclick=()=>output("pdf",elBlocks,elName(),[],t("elTitle")+" · "+pe
 $("#elShare").onclick=()=>output("share",elBlocks,elName(),[],t("elTitle")+" · "+perLabel());
 
 /* ---------- Archivio e Cerca: esporta esattamente quello che vedi ---------- */
-const xPhotos={archX:true,resX:false};
+const xPhotos={archX:true,resX:false,agX:false};
 function shownDocs(listSel){return [...new Set($$(listSel+" [data-open]").map(r=>r.dataset.open))].map(id=>docs.find(d=>d.id===id)).filter(Boolean)}
-function viewLabel(box){if(box==="resX")return "“"+$("#q").value.trim()+"”";const parts=[];const f=$("#archChips .on");if(f&&f.dataset.f!=="all")parts.push(f.textContent.trim());const c=$("#catChips .on");if(c&&c.dataset.c)parts.push(c.textContent.trim());const m=$("#archMonth").value;if(m)parts.push(mon(m));return parts.join(" · ")}
+const XL={archX:"#archList",resX:"#resList",agX:"#agList"};
+function viewLabel(box){if(box==="agX")return agTitle;if(box==="resX")return "“"+$("#q").value.trim()+"”";const parts=[];const f=$("#archChips .on");if(f&&f.dataset.f!=="all")parts.push(f.textContent.trim());const c=$("#catChips .on");if(c&&c.dataset.c)parts.push(c.textContent.trim());const m=$("#archMonth").value;if(m)parts.push(mon(m));return parts.join(" · ")}
 function renderXbar(box,listSel){const el=$("#"+box);if(!el)return;const n=shownDocs(listSel).length;el.classList.toggle("hide",!n);if(!n)return;
   el.innerHTML=`<div class="xt">${esc(t("xT")(n,viewLabel(box)))}</div><div class="grid3"><button class="primary ibtn" data-x="print"><i>🖨</i><span>${esc(t("oPrint"))}</span></button><button class="secondary ibtn" data-x="pdf"><i>⬇</i><span>PDF</span></button><button class="secondary ibtn" data-x="share"><i>↗</i><span>${esc(t("oShare"))}</span></button></div><div class="grid2"><button class="secondary ibtn" data-x="xls"><i>▦</i><span>Excel</span></button><button class="secondary ibtn" data-x="mail"><i>✉</i><span>${esc(t("oEmail"))}</span></button></div><label class="tg"><input type="checkbox" data-ph ${xPhotos[box]?"checked":""}> ${esc(t("xPh"))}</label>`}
 function renderXbars(){renderXbar("archX","#archList");renderXbar("resX","#resList")}
@@ -516,7 +518,7 @@ const _renderAll2=renderAll;renderAll=function(){_renderAll2();renderXbars()};
 const _runSearch=runSearch;runSearch=function(){_runSearch();renderXbars()};$("#q").oninput=runSearch;
 document.addEventListener("change",e=>{const c=e.target.closest(".xbar [data-ph]");if(c)xPhotos[c.closest(".xbar").id]=c.checked});
 function listBlocks(list,title,photos){return async()=>{let b=head(title).concat([listTable(list)]);const inn=list.filter(d=>d.type==="cliente"),out=list.filter(d=>d.type!=="cliente");b.push({kv:[[t("pTotalIn"),eur(sumOf(inn))],[t("pTotalOut"),eur(sumOf(out))],[t("pDocs"),String(list.length)]]});if(photos)for(const d of list)b=b.concat(await docBlocks(d,false));return b}}
-document.addEventListener("click",async e=>{const b=e.target.closest(".xbar [data-x]");if(!b)return;const box=b.closest(".xbar").id,list=shownDocs(box==="resX"?"#resList":"#archList").sort((x,y)=>String(x.date).localeCompare(String(y.date)));if(!list.length)return;
+document.addEventListener("click",async e=>{const b=e.target.closest(".xbar [data-x]");if(!b)return;const box=b.closest(".xbar").id,list=shownDocs(XL[box]).sort((x,y)=>String(x.date).localeCompare(String(y.date)));if(!list.length)return;
   const lab=viewLabel(box),title=t("pList")+(lab?" · "+lab:""),name="Belege_"+(safe(lab)||"Auswahl")+"_"+todayISO()+".pdf",ids=list.map(d=>d.id),k=b.dataset.x;
   if(k==="xls"){try{await exportXls(list,name.replace(/\.pdf$/,".xlsx"),null);api("track",{what:"excel",ids,det:name}).catch(()=>{})}catch(err){toast(errText(err.message))}return}
   if(k==="mail"){const f=async()=>{const bl=await listBlocks(list,title,xPhotos[box])();const blob=await pdfOf(bl);const file=new File([blob],name,{type:"application/pdf"});
@@ -525,3 +527,78 @@ document.addEventListener("click",async e=>{const b=e.target.closest(".xbar [dat
       api("track",{what:"invio",ids,det:"Email · "+name}).catch(()=>{})};
     if(outBusy)return;outBusy=true;toast(t("oPreparing"));try{await f()}catch(err){toast(errText(err.message))}finally{outBusy=false}return}
   output(k,listBlocks(list,title,xPhotos[box]),name,ids,name)});
+
+
+/* ---------- Fai per me (solo admin) ---------- */
+let agMode=false,agTitle="",agState=null;
+const L2=(it,de)=>lang==="de"?de:it;
+const ART_N={D:"Denis",G:"Giova Tattoos",W:"Waiblingen Ink"};
+const WD=()=>L2(["lunedì","martedì","mercoledì","giovedì","venerdì","sabato","domenica"],["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"]);
+const wdOf=s=>{const g=new Date(String(s).slice(0,10)+"T12:00:00").getDay();return g===0?7:g};
+function agFilter(f){const tx=f.text?norm(f.text):"";
+  return docs.filter(d=>{if(d.deleted)return false;const ds=String(d.date||"").slice(0,10);
+    if(f.from&&ds<f.from)return false;if(f.to&&ds>f.to)return false;
+    if(f.weekdays&&f.weekdays.length&&!f.weekdays.includes(wdOf(ds)))return false;
+    if(f.types&&f.types.length&&!f.types.includes(d.type))return false;
+    if(f.arts&&f.arts.length&&!f.arts.includes(d.art))return false;
+    if(f.cats&&f.cats.length&&!f.cats.includes(d.cat))return false;
+    if(tx&&!norm([d.client,d.vendor,d.number,d.note].join(" ")).includes(tx))return false;
+    if(f.min!=null&&!(+d.total>=f.min))return false;if(f.max!=null&&!(+d.total<=f.max))return false;
+    if(f.status&&(f.status==="confirm")!==(d.status==="confirm"))return false;
+    if(f.priv===true){if(!d.priv)return false}else if(f.priv===false||f.priv==null){if(d.priv)return false}
+    return true}).sort((a,b)=>String(a.date).localeCompare(String(b.date)))}
+function agChipsOf(f){const c=[],typeN={cliente:t("tCli"),acquisto:t("tAcq"),fattura:t("tFat")};
+  if(f.from||f.to)c.push(["date",null,f.from&&f.to?fmtDate(f.from)+" → "+fmtDate(f.to):f.from?L2("dal ","ab ")+fmtDate(f.from):L2("fino al ","bis ")+fmtDate(f.to)]);
+  (f.weekdays||[]).forEach(w=>c.push(["weekdays",w,WD()[w-1]]));
+  (f.types||[]).forEach(x=>c.push(["types",x,f.types.length===1&&x==="cliente"&&!(f.cats||[]).length?L2("Tatuaggi","Tattoos"):typeN[x]]));
+  (f.arts||[]).forEach(x=>c.push(["arts",x,ART_N[x]]));
+  (f.cats||[]).forEach(x=>c.push(["cats",x,CATS[x]?CATS[x][L()]:x]));
+  if(f.text)c.push(["text",null,"“"+f.text+"”"]);
+  if(f.min!=null)c.push(["min",null,"≥ "+eur(f.min)]);if(f.max!=null)c.push(["max",null,"≤ "+eur(f.max)]);
+  if(f.status)c.push(["status",null,f.status==="confirm"?t("toConfirm"):L2("confermati","bestätigt")]);
+  if(f.priv===true)c.push(["priv",null,L2("privati","privat")]);
+  return c}
+function agDrop(f,k,v){f=JSON.parse(JSON.stringify(f));if(k==="date"){f.from=null;f.to=null}else if(Array.isArray(f[k]))f[k]=f[k].filter(x=>x!==v);else f[k]=null;return f}
+const fldName=k=>({cat:L2("Categoria","Kategorie"),rate:L2("IVA","MwSt"),status:"Status",priv:L2("Privato","Privat"),art:L2("Chi","Wer")}[k]);
+const fldVal=(k,v)=>k==="cat"?(CATS[v]?CATS[v][L()]:v||"–"):k==="rate"?(v==null||v===""?"–":v+" %"):k==="status"?(v==="confirm"?t("toConfirm"):L2("confermato","bestätigt")):k==="priv"?(v?L2("sì","ja"):L2("no","nein")):k==="art"?(ART_N[v]||v||"–"):String(v);
+const same=(k,a,b)=>k==="priv"?!!a===!!b:k==="rate"?Number(a)===Number(b)&&a!==""&&a!=null:String(a??"")===String(b??"");
+function agHead(q){return `<div class="agreq"><small>${esc(L2("La tua richiesta","Dein Auftrag"))}</small>${esc(q)}</div>`}
+function agChipsHTML(f){const c=agChipsOf(f);return c.length?`<p class="aggot">${esc(L2("Ho capito così (tocca per togliere):","So habe ich es verstanden (antippen zum Entfernen):"))}</p><div class="agchips">${c.map((x,i)=>`<button type="button" data-agdrop="${i}">${esc(x[2])}</button>`).join("")}</div>`:""}
+function agRender(){const st=agState,box=$("#askOut");if(!st)return;const f=st.filter,list=agFilter(f);agTitle=st.title||st.q;
+  if(st.kind==="answer"){box.innerHTML=agHead(st.q)+`<div class="list" style="padding:14px"><b style="font-size:16px;line-height:1.4">${esc(st.answer||"")}</b></div>`;return}
+  let h=agHead(st.q)+agChipsHTML(f);
+  if(st.kind==="edit"){const keys=Object.keys(st.set||{});const ch=list.map(d=>({d,diff:keys.filter(k=>!same(k,d[k],st.set[k]))}));const todo=ch.filter(x=>x.diff.length);st.ids=todo.map(x=>x.d.id);
+    const what=keys.map(k=>fldName(k)+" → "+fldVal(k,st.set[k])).join(" · ");
+    h+=`<div class="agch"><div class="h"><span>${esc(st.title||"")}</span><small>${esc(what)}</small></div>`+(list.length?ch.slice(0,150).map(x=>{const d=x.d,ti=d.type==="cliente"?(d.client||t("tCli")):(d.vendor||t(d.type==="fattura"?"tFat":"tAcq"));
+      return `<div class="cr"><div class="t"><span>${esc(fmtDate(d.date))} · ${esc(ti)}</span><span class="mono">${esc(eur(d.total))}</span></div><div class="c">${x.diff.length?x.diff.map(k=>`${esc(fldName(k))}: <span class="old">${esc(fldVal(k,d[k]))}</span> → <span class="new">${esc(fldVal(k,st.set[k]))}</span>`).join("<br>"):`<span class="same">${esc(L2("già a posto, non lo tocco","schon richtig, bleibt so"))}</span>`}</div></div>`}).join(""):`<div class="cr">${esc(t("noRes"))}</div>`)+`</div>`;
+    if(todo.length>150)h+=`<div class="agwarn">${esc(L2("Troppi documenti: ne cambio al massimo 150 per volta. Restringi la richiesta.","Zu viele Belege: höchstens 150 auf einmal. Bitte eingrenzen."))}</div>`;
+    else if(todo.length)h+=`<div class="agwarn">${esc(L2("Non ho ancora cambiato niente. Se confermi e poi ci ripensi, c'è il tasto Annulla in Home per 24 ore.","Noch nichts geändert. Wenn du bestätigst und es dir anders überlegst: Rückgängig auf der Startseite, 24 Stunden lang."))}</div><div class="agcta"><button type="button" class="ok" id="agOk">✓ ${esc(L2("Conferma","Bestätigen"))} (${todo.length})</button><button type="button" id="agNo">${esc(L2("Lascia stare","Lass es"))}</button></div>`;
+    else if(list.length)h+=`<div class="agwarn" style="background:#DCFCE7;border-color:#bbf7d0;color:#14532d">${esc(L2("È già tutto a posto, non c'è niente da cambiare.","Alles schon richtig, nichts zu ändern."))}</div>`;
+    box.innerHTML=h;
+    const ok=$("#agOk");if(ok)ok.onclick=async()=>{ok.disabled=true;ok.textContent="…";try{const r=await api("agentApply",{ids:st.ids,set:st.set,q:st.q});toast(L2("Fatto: ","Erledigt: ")+r.n+" "+t("docsN"));agState=null;box.innerHTML=`<div class="agwarn" style="background:#DCFCE7;border-color:#bbf7d0;color:#14532d">✓ ${esc(L2("Fatto","Erledigt"))}: ${r.n} ${esc(t("docsN"))}. ${esc(L2("Puoi annullare dalla Home per 24 ore.","Rückgängig auf der Startseite, 24 Stunden lang."))}</div>`;await load()}catch(err){ok.disabled=false;toast(errText(err.message))}};
+    const no=$("#agNo");if(no)no.onclick=()=>{agState=null;box.innerHTML="";agHomeShow()};
+    return}
+  const arts={};list.forEach(d=>{if(d.type==="cliente"&&!d.priv&&d.art)arts[d.art]=(arts[d.art]||0)+(+d.total||0)});const ak=Object.keys(arts);
+  h+=list.length?`<div class="list" id="agList">${list.map(d=>rowHTML(d,[])).join("")}${totHTML(list)}${ak.length>1?`<div class="agarts">${ak.map(a=>`<span>${esc(ART_N[a]||a)} <b>${esc(eur(r2(arts[a])))}</b></span>`).join("")}</div>`:""}</div><div class="xbar hide" id="agX"></div><button type="button" class="agsave" id="agSave">☆ ${esc(L2("Salva come richiesta fissa","Als festen Auftrag speichern"))}</button>`:`<div class="list" style="padding:14px">${esc(t("noRes"))}</div>`;
+  box.innerHTML=h;renderXbar("agX","#agList");
+  const sv=$("#agSave");if(sv)sv.onclick=async()=>{sv.disabled=true;try{const r=await api("saveReq",{name:st.title||st.q,q:st.q});savedReqs=r.saved||[];agSavedRender();sv.textContent="★ "+L2("Salvata","Gespeichert")}catch(err){sv.disabled=false;toast(errText(err.message))}}}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-agdrop]");if(!b||!agState)return;const c=agChipsOf(agState.filter)[+b.dataset.agdrop];if(!c)return;agState.filter=agDrop(agState.filter,c[0],c[1]);agRender()});
+async function agRun(q){const box=$("#askOut");agHomeShow(false);box.innerHTML=agHead(q)+`<div class="info"><span class="spin"></span><span>${esc(L2("Ci penso…","Ich überlege…"))}</span></div>`;
+  try{const j=await api("agent",{q,lang});agState=Object.assign({q},j);agRender()}catch(err){box.innerHTML=agHead(q)+`<div class="warn">${esc(errText(err.message))}</div>`}}
+function agSavedRender(){const el=$("#agSaved");if(!el)return;$("#agSavedL").classList.toggle("hide",!savedReqs.length);
+  el.innerHTML=savedReqs.map((r,i)=>`<div class="sv"><div><b>${esc(r.name)}</b><small>${esc(r.q)}</small></div><button type="button" class="run" data-agrun="${i}">▶</button><button type="button" data-agdel="${i}" aria-label="${esc(L2("Elimina","Löschen"))}">✕</button></div>`).join("")}
+document.addEventListener("click",async e=>{const r=e.target.closest("[data-agrun]");if(r){const x=savedReqs[+r.dataset.agrun];if(x){$("#askIn").value=x.q;agRun(x.q)}return}
+  const d=e.target.closest("[data-agdel]");if(d){try{const j=await api("delReq",{i:+d.dataset.agdel});savedReqs=j.saved||[];agSavedRender()}catch(err){toast(errText(err.message))}}});
+function agHomeShow(v){$("#agHome").classList.toggle("hide",!(agMode&&v!==false&&!agState));if(agMode)agSavedRender()}
+function agSetMode(m){agMode=m&&isAdmin();$$("#askSeg button").forEach(b=>b.classList.toggle("on",(b.dataset.m==="agent")===agMode));
+  $("#agHint").classList.toggle("hide",!agMode);$("[data-t=askHint]").classList.toggle("hide",agMode);$("#askChips").classList.toggle("hide",agMode);
+  $("#askIn").placeholder=agMode?L2("es. tatuaggi di mercoledì a ottobre, con PDF","z.B. Tattoos am Mittwoch im Oktober, mit PDF"):t("askPh");
+  $("#askForm button[type=submit]").textContent=agMode?L2("Fai","Los"):t("askBtn");$("#askOut").innerHTML="";agState=null;agHomeShow()}
+$$("#askSeg button").forEach(b=>b.onclick=()=>agSetMode(b.dataset.m==="agent"));
+$$("#agChips button").forEach(b=>b.onclick=()=>{$("#askIn").value=b.textContent;agRun(b.textContent)});
+function agInit(){const a=isAdmin();$("#askSeg").classList.toggle("hide",!a);if(!a&&agMode)agSetMode(false)}
+const _renderAll3=renderAll;renderAll=function(){_renderAll3();agInit()};
+const _askSubmit=$("#askForm").onsubmit;$("#askForm").onsubmit=e=>{if(!agMode)return _askSubmit(e);e.preventDefault();const q=$("#askIn").value.trim();if(q)agRun(q)};
+(function(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition,m=$("#askMic");if(!SR||!m)return;m.classList.remove("hide");let rec=null;
+  m.onclick=()=>{if(rec){rec.stop();return}rec=new SR();rec.lang=lang==="de"?"de-DE":"it-IT";rec.interimResults=true;m.classList.add("rec");
+    rec.onresult=ev=>{$("#askIn").value=[...ev.results].map(r=>r[0].transcript).join("")};rec.onend=()=>{m.classList.remove("rec");rec=null};rec.onerror=()=>{};rec.start()}})();

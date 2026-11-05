@@ -62,7 +62,7 @@ function doPost(e) {
     const need = () => { if (!admin) throw new Error('solo_lettura'); };
     switch (req.action) {
       case 'me': return out_({ email: user.email, role: user.role });
-      case 'list': return out_({ docs: listDocs_().filter(d => admin || !d.priv), undo: admin ? undoInfo_() : null });
+      case 'list': return out_({ docs: listDocs_().filter(d => admin || !d.priv), undo: admin ? undoInfo_() : null, saved: admin ? JSON.parse(prop('SAVED') || '[]') : [] });
       case 'undo': need(); return out_(undoRedo_(user.email, false));
       case 'redo': need(); return out_(undoRedo_(user.email, true));
       case 'save': need(); return out_({ doc: saveDoc_(req.doc, req.photo, req.mime, user.email) });
@@ -75,6 +75,10 @@ function doPost(e) {
       case 'photo': return out_(photo_(req.id));
       case 'history': return out_({ items: history_(req.id) });
       case 'ask': return out_(ask_(req.q, admin, req.lang));
+      case 'agent': need(); return out_(agent_(req.q, req.lang, user.email));
+      case 'agentApply': need(); return out_(agentApply_(req.ids, req.set, req.q, user.email));
+      case 'saveReq': need(); { const L = JSON.parse(prop('SAVED') || '[]'); L.push({ name: String(req.name || '').slice(0, 60), q: String(req.q || '').slice(0, 500), by: user.email }); P().setProperty('SAVED', JSON.stringify(L.slice(-20))); log_(user.email, 'richiesta salvata', '', req.name); return out_({ saved: L.slice(-20) }); }
+      case 'delReq': need(); { const L = JSON.parse(prop('SAVED') || '[]'); L.splice(Number(req.i), 1); P().setProperty('SAVED', JSON.stringify(L)); return out_({ saved: L }); }
       case 'importNow': need(); return out_({ imported: importMail() });
       case 'setKey': need(); P().setProperty('GEMINI_KEY', String(req.key || '').trim()); log_(user.email, 'chiave gemini', '', 'aggiornata'); return out_({ ok: true });
       case 'setClaudeKey': need(); {
@@ -568,4 +572,50 @@ function organizeAll() {
   P().setProperty('ORG_DONE', JSON.stringify(done));
   log_('drive', 'cartella unica', '', n + ' file sistemati' + (left ? ', ' + left + ' ancora da fare' : ''));
   Logger.log(n + ' file sistemati, ' + left + ' da fare');
+}
+
+/* ================= Fai per me: l'AI traduce la richiesta in filtri o modifiche, i conti li fa l'app ================= */
+function agent_(q, lang, who) {
+  q = String(q || '').slice(0, 500);
+  const today = Utilities.formatDate(new Date(), 'Europe/Berlin', 'yyyy-MM-dd');
+  const prompt = `Sei "Fai per me", l'aiutante contabile dell'app Ricevute di Waiblingen Ink (studio di tatuaggi). Oggi è ${today} (${Utilities.formatDate(new Date(), 'Europe/Berlin', 'EEEE')}).
+NON rispondi con i dati: traduci la richiesta in un FILTRO sui documenti e, se chiesto, in una MODIFICA. I conti li fa l'app.
+Documenti: tipo "cliente" (ricevuta a cliente = incasso), "acquisto" (scontrino pagato), "fattura" (fattura di fornitore già pagata). Chi: "D" Denis, "G" Giova Tattoos (Giovanni), "W" Waiblingen Ink verso tatuatore (affitto postazione). "Tatuaggi" = ricevute a cliente. Categorie: ${CATS.join(', ')} (einnahme tatuaggio, anzahlung acconto, platzmiete, material, miete, energie, telefon, software abbonamenti, versicherung, werbung, fahrzeug auto e carburante, buero ufficio, gebuehren, steuer, beratung, sonstiges altro).
+Rispondi SOLO con JSON:
+{"kind":"list|edit|answer","title":"titolo breve della pagina","filter":{"from":"YYYY-MM-DD"|null,"to":"YYYY-MM-DD"|null,"weekdays":[1-7, 1=lunedì]|[],"types":[]|["cliente","acquisto","fattura"],"arts":[]|["D","G","W"],"cats":[],"text":"parola da cercare in cliente/fornitore/numero/nota"|null,"min":numero|null,"max":numero|null,"status":"confirm"|"ok"|null,"priv":true|false|null},"set":{"cat":"...","rate":0|7|19,"status":"ok","priv":true|false,"art":"D|G|W"},"answer":"frase breve"}
+Regole: "list" per elenchi, riepiloghi, PDF, totali. "edit" solo se l'utente chiede di cambiare, mettere, segnare, confermare (in "set" solo i campi da cambiare, tra cat, rate, status, priv, art). "answer" solo se la richiesta non riguarda ricevute e fatture: allora rispondi gentilmente che puoi aiutare solo con la contabilità. Mesi senza anno = l'anno più recente non nel futuro. Il titolo e la risposta in ${lang === 'de' ? 'TEDESCO' : 'italiano'}.
+Richiesta: ${q}`;
+  const r = ai_([{ text: prompt }], true);
+  const f = r.filter || {}, okD = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x || '')) ? String(x) : null;
+  const filter = { from: okD(f.from), to: okD(f.to),
+    weekdays: (Array.isArray(f.weekdays) ? f.weekdays : []).map(Number).filter(x => x >= 1 && x <= 7),
+    types: (Array.isArray(f.types) ? f.types : []).filter(x => ['cliente', 'acquisto', 'fattura'].indexOf(x) >= 0),
+    arts: (Array.isArray(f.arts) ? f.arts : []).filter(x => ['D', 'G', 'W'].indexOf(x) >= 0),
+    cats: (Array.isArray(f.cats) ? f.cats : []).filter(x => CATS.indexOf(x) >= 0),
+    text: f.text ? String(f.text).slice(0, 60) : null, min: isFinite(f.min) && f.min !== null ? Number(f.min) : null, max: isFinite(f.max) && f.max !== null ? Number(f.max) : null,
+    status: f.status === 'confirm' || f.status === 'ok' ? f.status : null, priv: f.priv === true || f.priv === false ? f.priv : null };
+  const set = {}, s0 = r.set || {};
+  if (CATS.indexOf(s0.cat) >= 0) set.cat = s0.cat;
+  if ([0, 7, 19].indexOf(Number(s0.rate)) >= 0 && s0.rate !== null && s0.rate !== '') set.rate = Number(s0.rate);
+  if (s0.status === 'ok') set.status = 'ok';
+  if (s0.priv === true || s0.priv === false) set.priv = s0.priv;
+  if (['D', 'G', 'W'].indexOf(s0.art) >= 0) set.art = s0.art;
+  const kind = r.kind === 'edit' && Object.keys(set).length ? 'edit' : r.kind === 'answer' ? 'answer' : 'list';
+  log_(who, 'fai per me', '', q);
+  return { kind, title: String(r.title || q).replace(/\s+[\u2013\u2014-]+\s+/g, ' · ').slice(0, 120), filter, set, answer: String(r.answer || '') };
+}
+function agentApply_(ids, set, q, who) {
+  ids = (Array.isArray(ids) ? ids : []).slice(0, 150).map(String);
+  const s = {}; set = set || {};
+  if (CATS.indexOf(set.cat) >= 0) s.cat = set.cat;
+  if ([0, 7, 19].indexOf(Number(set.rate)) >= 0 && set.rate !== null && set.rate !== '') s.rate = Number(set.rate);
+  if (set.status === 'ok') s.status = 'ok';
+  if (set.priv === true || set.priv === false) s.priv = set.priv;
+  if (['D', 'G', 'W'].indexOf(set.art) >= 0) s.art = set.art;
+  if (!Object.keys(s).length) throw new Error('niente_da_cambiare');
+  const docs = listDocs_(true), by = {}; docs.forEach(d => by[d.id] = d);
+  let n = 0;
+  ids.forEach(id => { const x = by[id]; if (!x || x.deleted) return; const d = Object.assign({}, x, s); d.priv = s.priv !== undefined ? s.priv : x.priv === true; saveDoc_(d, null, null, who + ' · Fai per me'); n++; });
+  log_(who, 'fai per me: modifica', '', n + ' documenti · ' + String(q || '').slice(0, 200));
+  return { ok: true, n };
 }

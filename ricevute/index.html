@@ -147,6 +147,39 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted);padding:6px 0}
 .banner{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--orangeBg);border:1px solid var(--orangeLine);border-radius:14px;padding:12px 14px;color:#7c2d12;font-weight:600;font-size:14px;cursor:pointer;width:100%;text-align:left}
 #v-login{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px;max-width:420px;margin:0 auto;gap:24px}
 nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+.aseg{display:grid;grid-template-columns:1fr 1fr;background:#e2e8f0;border-radius:14px;padding:4px;gap:4px}
+.aseg button{border:none;background:none;padding:10px 4px;border-radius:11px;font-weight:700;font-size:15px;color:var(--muted);cursor:pointer}
+.aseg button.on{background:#fff;color:var(--blue);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.ask .mic{flex:0 0 52px;width:52px;padding:0;background:var(--blueBg);color:var(--blue);font-size:20px}
+.ask .mic.rec{background:#fee2e2}
+.albl{font-size:12px;font-weight:700;color:var(--muted);margin:16px 0 6px;text-transform:uppercase;letter-spacing:.3px}
+.agsaved{display:flex;flex-direction:column;gap:8px}
+.agsaved .sv{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;gap:8px;align-items:center}
+.agsaved .sv div{flex:1;min-width:0}.agsaved .sv b{display:block;font-size:14px}.agsaved .sv small{color:var(--muted);font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agsaved .sv button{border:1px solid var(--line);background:#fff;border-radius:10px;min-width:44px;height:44px;font-size:15px;cursor:pointer}
+.agsaved .sv button.run{background:var(--blue);color:#fff;border-color:var(--blue);font-weight:700;padding:0 12px}
+.agreq{background:var(--blueBg);border-radius:14px;padding:10px 12px;font-size:15px}
+.agreq small{display:block;color:#0b2e7a;font-weight:700;font-size:12px;margin-bottom:2px}
+.aggot{font-size:12px;color:var(--muted);margin:0}
+.agchips{display:flex;flex-wrap:wrap;gap:6px}
+.agchips button{background:#fff;border:1px solid var(--blue);color:#0046cc;border-radius:99px;padding:7px 11px;font-size:13px;font-weight:600;cursor:pointer;min-height:36px}
+.agchips button:after{content:" ✕";opacity:.6}
+.agarts{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;padding:8px 12px;background:#f8fafc;border-top:1px solid var(--line)}
+.agarts b{font-family:"JetBrains Mono",monospace}
+.agch{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.agch .h{padding:10px 12px;font-weight:700;font-size:14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
+.agch .h small{color:var(--muted);font-weight:500}
+.agch .cr{padding:9px 12px;border-bottom:1px solid #f1f5f9;font-size:13px}
+.agch .cr .t{display:flex;justify-content:space-between;gap:8px;font-weight:600}
+.agch .cr .c{margin-top:3px;font-size:12.5px}
+.agch .old{color:var(--red,#B91C1C);text-decoration:line-through}.agch .new{color:var(--green);font-weight:700}.agch .same{color:var(--muted);font-size:12px}
+.agwarn{background:#FFF7ED;border:1px solid #fed7aa;color:#7c2d12;border-radius:12px;padding:9px 11px;font-size:13px}
+.agcta{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.agcta button{min-height:52px;border-radius:13px;font-weight:700;font-size:15px;cursor:pointer;border:1px solid var(--line);background:#fff}
+.agcta button.ok{background:var(--green);color:#fff;border-color:var(--green)}
+.ask input{min-width:0}.ask button[type=submit]{flex:0 0 auto}
+#agChips{flex-direction:column;align-items:stretch}#agChips button{white-space:normal;text-align:left;height:auto;min-height:44px;line-height:1.3;padding:9px 13px;border-radius:14px}
+.agsave{background:none;border:none;color:var(--blue);font-weight:600;font-size:14px;cursor:pointer;padding:10px}
 </style>
 </head>
 <body>
@@ -265,8 +298,11 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
     <div class="bar"><b data-t="ask" style="font-size:22px;font-weight:800">Chiedi</b></div>
     <main style="padding-top:8px">
       <p style="margin:0;color:var(--muted);font-size:14px" data-t="askHint">Chiedi all'archivio: incassi, spese, clienti, fornitori, periodi.</p>
-      <form class="ask" id="askForm"><input id="askIn" autocomplete="off" data-ph="askPh" placeholder="es. Quanto abbiamo incassato a ottobre?" aria-label="Domanda" data-al="alAsk"><button type="submit" data-t="askBtn">Chiedi</button></form>
+      <div class="aseg hide" id="askSeg"><button type="button" class="on" data-m="ask" data-t="ask">Chiedi</button><button type="button" data-m="agent">✦ <span data-t="agName">Fai per me</span></button></div>
+      <p class="hide" id="agHint" style="margin:0;color:var(--muted);font-size:14px" data-t="agHint">Dimmi cosa ti serve: preparo la lista, il PDF o le modifiche. Prima di cambiare qualcosa ti faccio vedere tutto e aspetto il tuo ok.</p>
+      <form class="ask" id="askForm"><button type="button" class="mic hide" id="askMic" aria-label="Detta">🎤</button><input id="askIn" autocomplete="off" data-ph="askPh" placeholder="es. Quanto abbiamo incassato a ottobre?" aria-label="Domanda" data-al="alAsk"><button type="submit" data-t="askBtn">Chiedi</button></form>
       <div class="chips" id="askChips"><button type="button" data-t="q1">Quanto abbiamo incassato a ottobre?</button><button type="button" data-t="q2">Quante spese abbiamo avuto a settembre?</button><button type="button" data-t="q3">Tatuaggi di Giova Tattoos questo mese</button><button type="button" data-t="q4">Abbonamenti che paghiamo ogni mese</button></div>
+      <div id="agHome" class="hide"><div class="albl" id="agSavedL" data-t="agSaved">Richieste salvate</div><div id="agSaved" class="agsaved"></div><div class="albl" data-t="agEx">Esempi</div><div class="chips" id="agChips"><button type="button" data-t="ag1">Tatuaggi di mercoledì e venerdì di Denis e Giovanni a ottobre, con PDF</button><button type="button" data-t="ag2">Tutti gli scontrini di carburante di quest'anno</button><button type="button" data-t="ag3">Spese sopra 200 € a settembre</button><button type="button" data-t="ag4">Metti in categoria Software tutti gli abbonamenti Apple</button></div></div>
       <div id="askOut" style="display:flex;flex-direction:column;gap:12px"></div>
     </main>
   </section>
@@ -314,6 +350,6 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
 <button id="shareReady" class="shareready hide" data-t="oShareReady">Pronto: tocca qui per inviare</button>
 <div id="printArea"></div>
 <script src="config.js?v=8"></script>
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>
