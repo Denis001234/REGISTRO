@@ -70,6 +70,23 @@ nav.tabs button.on{color:var(--blue)}
 .undobar button:disabled{opacity:.45;cursor:default}
 .undobar .ur{font-size:22px;color:var(--blue);line-height:1}
 .undobar b{display:block;font-size:14px}.undobar small{display:block;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+.kpi3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.kpi3 .mono{font-size:16px}
+.ehead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}.ehead small{color:var(--muted);font-size:12px}
+.ebar{display:grid;grid-template-columns:110px 1fr 96px;align-items:center;gap:8px;font-size:13px;margin:7px 0}
+.ebar i{display:block;height:10px;border-radius:99px;background:var(--blue)}
+.ebar b{font-family:"JetBrains Mono",monospace;text-align:right;font-size:13px}
+.ck{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;padding:9px 0;border-bottom:1px solid var(--soft);width:100%;background:none;border-left:none;border-right:none;border-top:none;text-align:left}
+.ck:last-child{border-bottom:none}.ck.go{cursor:pointer}
+.ck .ok{color:var(--green);font-weight:700;white-space:nowrap}.ck .ko{color:var(--orange);font-weight:700;white-space:nowrap}
+.ibtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:58px!important;font-size:13px!important;padding:4px!important}
+.ibtn i{font-style:normal;font-size:18px;line-height:1}
+.xbar{margin-top:12px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.xbar .xt{font-size:12px;color:var(--muted)}
+.xbar .tg{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.elsheet{position:fixed;inset:0;z-index:50}.eldim{position:absolute;inset:0;background:rgba(15,23,42,.4)}
+.elbox{position:absolute;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;background:#fff;border-radius:22px 22px 0 0;padding:14px 18px calc(22px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px rgba(15,23,42,.25)}
+.grab{width:42px;height:5px;border-radius:9px;background:#cbd5e1;margin:0 auto 10px}
 .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .grid3 button{min-height:48px;font-size:14px}
 .models{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -158,7 +175,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
       </div>
       <div id="searchRes" class="hide">
         <div class="head"><b id="resTitle"></b><span><button class="link selBtn" data-t="oSelect" style="margin-right:14px">Seleziona</button><button class="link" id="clearQ" data-t="clear">Annulla</button></span></div>
-        <div class="list" id="resList"></div>
+        <div class="list" id="resList"></div><div class="xbar hide" id="resX"></div>
       </div>
       <div id="homeBody" style="display:flex;flex-direction:column;gap:12px">
         <div id="undoBar" class="undobar hide"><button id="undoBtn"><span class="ur">↶</span><span><b data-t="uUndo">Annulla</b><small id="undoTxt"></small></span></button><button id="redoBtn"><span class="ur">↷</span><span><b data-t="uRedo">Ripeti</b><small id="redoTxt"></small></span></button></div>
@@ -240,7 +257,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
       </div>
       <div class="chips" id="catChips"></div>
       <div class="field" style="background:#fff;border:1px solid var(--line);border-radius:14px"><label for="archMonth" data-t="month">Mese</label><input id="archMonth" type="month" class="mono"></div>
-      <div class="list" id="archList"></div>
+      <div class="list" id="archList"></div><div class="xbar hide" id="archX"></div>
     </main>
   </section>
 
@@ -258,33 +275,31 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
     <div class="bar"><b data-t="export" style="font-size:22px;font-weight:800">Export</b></div>
     <main style="padding-top:8px">
       <div class="field" style="background:#fff;border:1px solid var(--line);border-radius:14px"><label for="expPer" data-t="period">Periodo</label><select id="expPer"></select></div>
-      <div class="grid2">
-        <div class="stat"><span data-t="docsN">Documenti</span><span class="mono" id="eN">0</span></div>
-        <div class="stat"><span data-t="noRate">Senza aliquota MwSt</span><span class="mono" id="eNR" style="color:var(--orange)">0</span></div>
-        <div class="stat"><span data-t="sumIn">Entrate</span><span class="mono" style="color:var(--green)" id="eIn">0</span></div>
-        <div class="stat"><span data-t="sumOut">Uscite</span><span class="mono" id="eOut">0</span></div>
-      </div>
-      <div class="list" style="padding:14px;display:flex;flex-direction:column;gap:6px">
-        <b data-t="elsterHead">Stima per ELSTER (Umsatzsteuer-Voranmeldung)</b>
-        <div class="field" style="padding:4px 0"><label data-t="k81">Kz 81 · vendite al 19 % (netto)</label><span class="mono" id="k81"></span></div>
-        <div class="field" style="padding:4px 0"><label data-t="k86">Kz 86 · vendite al 7 % (netto)</label><span class="mono" id="k86"></span></div>
-        <div class="field" style="padding:4px 0"><label data-t="k66">Kz 66 · IVA sugli acquisti</label><span class="mono" id="k66"></span></div>
-        <div class="field" style="padding:4px 0;border-bottom:none"><label data-t="k83">Kz 83 · da versare</label><span class="mono" id="k83" style="font-size:17px"></span></div>
-        <span style="font-size:12px;color:var(--muted)" data-t="elsterNote">È solo una stima, il conto vero lo fa la consulente. Le spese private e gli acquisti senza aliquota non sono conteggiati.</span>
-      </div>
+      <div class="kpi3"><div class="stat"><span data-t="sumIn">Entrate</span><span class="mono" style="color:var(--green)" id="eIn">0</span></div><div class="stat"><span data-t="sumOut">Uscite</span><span class="mono" id="eOut">0</span></div><div class="stat"><span data-t="eSaldo">Saldo</span><span class="mono" id="eSaldo">0</span></div></div>
+      <div class="list" style="padding:14px"><div class="ehead"><b data-t="eBarsT">Da dove arrivano le entrate</b><small><span id="eN">0</span> <span data-t="docsN">Documenti</span></small></div><div id="eBars"></div></div>
+      <div class="list" style="padding:14px"><b data-t="eReadyT">Pronto per la consulente?</b><div id="eReady"></div></div>
       <div class="list" style="padding:14px;display:flex;flex-direction:column;gap:10px">
         <b data-t="mTitle">Modelli di riepilogo</b>
         <div class="models" id="models"></div>
         <label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" id="mPhotos"> <span data-t="mPhotos">Aggiungi le foto delle ricevute</span></label>
         <div id="mPrev" class="mprev"></div>
-        <div class="grid3"><button class="primary" id="mPrint" data-t="oPrint">Stampa</button><button class="secondary" id="mPdf" data-t="oPdf">Scarica PDF</button><button class="secondary" id="mShare" data-t="oShare">Invia</button></div>
+        <div class="grid3"><button class="primary ibtn" id="mPrint"><i>🖨</i><span data-t="oPrint">Stampa</span></button><button class="secondary ibtn" id="mPdf"><i>⬇</i><span data-t="oPdf">Scarica PDF</span></button><button class="secondary ibtn" id="mShare"><i>↗</i><span data-t="oShare">Invia</span></button></div>
       </div>
-      <b data-t="mOther" style="margin-top:6px">Altri export</b>
-      <button class="primary" id="xPdf" data-t="xPdf">PDF con le foto</button>
-      <div class="grid2"><button class="secondary" id="xXls" data-t="xXls">Excel</button><button class="secondary" id="xEl" data-t="xEl">Foglio ELSTER (PDF)</button></div>
+      <div class="grid3"><button class="secondary ibtn" id="xEl"><i>%</i><span data-t="tVat">Stima IVA (ELSTER)</span></button><button class="secondary ibtn" id="xXls"><i>▦</i><span data-t="xXls">Excel</span></button><button class="secondary ibtn" id="xPdf"><i>🖼</i><span data-t="tPdfPh">PDF con foto</span></button></div>
       <span id="xState" class="hide" style="font-size:13px;color:var(--muted)"></span>
+      <span class="hide" id="eNR"></span>
     </main>
   </section>
+  <div id="elSheet" class="elsheet hide"><div class="eldim" id="elDim"></div><div class="elbox"><div class="grab"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px"><span data-t="elTitle">Stima IVA</span> · <span id="elPer"></span></b><button class="link" id="elClose" data-t="elClose">Chiudi</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px" data-t="elSub">Umsatzsteuer-Voranmeldung, solo una stima</div>
+    <div class="field" style="padding:6px 0"><label data-t="k81">Kz 81 · vendite al 19 % (netto)</label><span class="mono" id="k81"></span></div>
+    <div class="field" style="padding:6px 0"><label data-t="k86">Kz 86 · vendite al 7 % (netto)</label><span class="mono" id="k86"></span></div>
+    <div class="field" style="padding:6px 0"><label data-t="k66">Kz 66 · IVA sugli acquisti</label><span class="mono" id="k66"></span></div>
+    <div class="field" style="padding:6px 0;border-bottom:none"><label data-t="k83">Kz 83 · da versare</label><span class="mono" id="k83" style="font-size:17px"></span></div>
+    <span style="font-size:12px;color:var(--muted)" data-t="elsterNote">È solo una stima, il conto vero lo fa la consulente. Le spese private e gli acquisti senza aliquota non sono conteggiati.</span>
+    <div class="grid3" style="margin-top:12px"><button class="primary ibtn" id="elPrint"><i>🖨</i><span data-t="oPrint">Stampa</span></button><button class="secondary ibtn" id="elPdf"><i>⬇</i><span data-t="oPdf">Scarica PDF</span></button><button class="secondary ibtn" id="elShare"><i>↗</i><span data-t="oShare">Invia</span></button></div>
+  </div></div>
 
   <nav class="tabs"><div class="in">
     <button data-v="home" class="on"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 11l9-7 9 7v9H3z"></path></svg><span data-t="home">Home</span></button>
@@ -299,6 +314,6 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
 <button id="shareReady" class="shareready hide" data-t="oShareReady">Pronto: tocca qui per inviare</button>
 <div id="printArea"></div>
 <script src="config.js?v=8"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>

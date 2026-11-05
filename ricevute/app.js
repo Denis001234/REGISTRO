@@ -270,7 +270,7 @@ function periods(){const ms=[...new Set(docs.map(d=>String(d.date||"").slice(0,7
 function inPer(d,p){const m=String(d.date||"").slice(0,7);if(!m||!p)return false;if(p.includes("Q"))return m.slice(0,4)===p.slice(0,4)&&("Q"+Math.ceil(+m.slice(5,7)/3))===p.slice(5);return m===p}
 const perDocs=()=>docs.filter(d=>counts(d)&&inPer(d,$("#expPer").value)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
 function elster(list){let n19=0,n7=0,vst=0,noRate=0,inn=0,out=0;for(const d of list){const tot=+d.total||0;const r=d.rate===""||d.rate==null?null:+d.rate;if(d.type==="cliente"){inn+=tot;if((r??19)===19)n19+=tot/1.19;else if(r===7)n7+=tot/1.07}else{out+=tot;if(r===19||r===7)vst+=tot-tot/(1+r/100);else if(r!==0)noRate++}}const k81=Math.floor(n19),k86=Math.floor(n7);return{k81,k86,k66:r2(vst),k83:r2(k81*0.19+k86*0.07-vst),noRate,inn:r2(inn),out:r2(out)}}
-function renderExp(){const s=$("#expPer"),cur=s.value,ps=periods();s.innerHTML=ps.map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join("");if(cur&&ps.some(p=>p[0]===cur))s.value=cur;const list=perDocs(),e=elster(list);$("#eN").textContent=list.length;$("#eNR").textContent=e.noRate;$("#eIn").textContent=eur(e.inn);$("#eOut").textContent=eur(e.out);$("#k81").textContent=eur(e.k81);$("#k86").textContent=eur(e.k86);$("#k66").textContent=eur(e.k66);$("#k83").textContent=eur(e.k83)}
+function renderExp(){const s=$("#expPer"),cur=s.value,ps=periods();s.innerHTML=ps.map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join("");if(cur&&ps.some(p=>p[0]===cur))s.value=cur;renderExpSmart()}
 $("#expPer").onchange=renderExp;
 const libs={};function lib(src){return libs[src]||(libs[src]=new Promise((ok,ko)=>{const s=document.createElement("script");s.src=src;s.onload=ok;s.onerror=()=>ko(new Error("lib"));document.head.appendChild(s)}))}
 const typeName=d=>d.type==="cliente"?(d.art==="W"?"Quittung an Tätowierer":"Quittung an Kunden"):(d.type==="fattura"?"Bezahlte Rechnung":"Einkauf");
@@ -474,3 +474,54 @@ let undoBusy=false;
 async function doUndo(redo){if(undoBusy)return;undoBusy=true;$("#undoBtn").disabled=$("#redoBtn").disabled=true;
   try{const j=await api(redo?"redo":"undo");if(j.ok)toast(t(redo?"uRedone":"uDone")+uDescr({descr:j.descr,who:"",when:new Date()}).split(" · ").slice(0,-1).join(" · "));await load()}catch(e){toast(e.message)}finally{undoBusy=false;renderUndo()}}
 $("#undoBtn").onclick=()=>doUndo(false);$("#redoBtn").onclick=()=>doUndo(true);
+
+/* ---------- Export intelligente: numeri, entrate per artista, controllo per la consulente, stima IVA a parte ---------- */
+Object.assign(IT,{eSaldo:"Saldo",eBarsT:"Da dove arrivano le entrate",eReadyT:"Pronto per la consulente?",rConf:"Documenti da confermare",rDup:"Possibili doppioni",rNoRate:"Acquisti senza aliquota IVA",rGio:"Ricevuta di Giovanni",rNone:"nessuno ✓",rArr:"arrivata ✓",rMiss:"non ancora arrivata",rNoG:"nessun lavoro di Giova",rCheck:"Controlla ›",tVat:"Stima IVA (ELSTER)",tPdfPh:"PDF con foto",elTitle:"Stima IVA",elSub:"Umsatzsteuer-Voranmeldung, solo una stima",elClose:"Chiudi",
+ xT:(n,l)=>"Esporta "+(n===1?"questo documento":"questi "+n+" documenti")+(l?" ("+l+")":""),xPh:"Con le foto delle ricevute",oEmail:"Email",oMailBody:"Il PDF è stato scaricato: allegalo a questa email.",rentW:"Platzmiete (W)"});
+Object.assign(DE,{eSaldo:"Saldo",eBarsT:"Woher die Einnahmen kommen",eReadyT:"Bereit für die Steuerberaterin?",rConf:"Belege zu bestätigen",rDup:"Mögliche Duplikate",rNoRate:"Einkäufe ohne MwSt-Satz",rGio:"Rechnung von Giovanni",rNone:"keine ✓",rArr:"da ✓",rMiss:"fehlt noch",rNoG:"keine Arbeiten von Giova",rCheck:"Prüfen ›",tVat:"USt-Schätzung (ELSTER)",tPdfPh:"PDF mit Fotos",elTitle:"USt-Schätzung",elSub:"Umsatzsteuer-Voranmeldung, nur eine Schätzung",elClose:"Schließen",
+ xT:(n,l)=>(n===1?"Diesen Beleg":"Diese "+n+" Belege")+" exportieren"+(l?" ("+l+")":""),xPh:"Mit Fotos der Belege",oEmail:"E-Mail",oMailBody:"Das PDF wurde geladen: bitte an diese E-Mail anhängen.",rentW:"Platzmiete (W)"});
+function renderExpSmart(){
+  const p=$("#expPer").value,list=perDocs(),all=docs.filter(d=>inPer(d,p)),e=elster(list);
+  $("#eN").textContent=list.length;$("#eIn").textContent=eur(e.inn);$("#eOut").textContent=eur(e.out);$("#eSaldo").textContent=eur(e.inn-e.out);$("#eSaldo").style.color=e.inn-e.out>=0?"var(--green)":"#B91C1C";
+  $("#k81").textContent=eur(e.k81);$("#k86").textContent=eur(e.k86);$("#k66").textContent=eur(e.k66);$("#k83").textContent=eur(e.k83);$("#elPer").textContent=perLabel();
+  const by=a=>sumOf(list.filter(d=>d.type==="cliente"&&d.art===a)),rows=[[t("sumG"),by("G")],[t("sumD"),by("D")],[t("rentW"),by("W")]].sort((x,y)=>y[1]-x[1]),mx=Math.max(1,...rows.map(r=>r[1]));
+  $("#eBars").innerHTML=rows.map(([l,v])=>`<div class="ebar"><span>${esc(l)}</span><i style="width:${Math.max(2,Math.round(v/mx*100))}%;${v?"":"background:#cbd5e1"}"></i><b>${esc(eur(v))}</b></div>`).join("");
+  const conf=all.filter(d=>d.status==="confirm").length,dup=all.filter(d=>DUPS.has(d.id)).length;
+  const months=[...new Set(list.filter(d=>d.type==="cliente"&&d.art==="G").map(d=>String(d.date).slice(0,7)))].sort();
+  const missing=months.filter(m=>!docs.some(d=>!d.priv&&isGiovaPay(d)&&prevMon(String(d.date||"").slice(0,7))===m));
+  const gio=!months.length?`<span class="ok">${esc(t("rNoG"))}</span>`:missing.length?`<span class="ko">${esc(t("rMiss"))}${months.length>1?" ("+missing.map(m=>mon(m)).join(", ")+")":""}</span>`:`<span class="ok">${esc(t("rArr"))}</span>`;
+  $("#eReady").innerHTML=`<button class="ck ${conf?"go":""}" data-go="conf"><span>${esc(t("rConf"))}</span>${conf?`<span class="ko">${conf} · ${esc(t("rCheck"))}</span>`:`<span class="ok">${esc(t("rNone"))}</span>`}</button>`
+   +`<button class="ck ${dup?"go":""}" data-go="dup"><span>${esc(t("rDup"))}</span>${dup?`<span class="ko">${dup} · ${esc(t("rCheck"))}</span>`:`<span class="ok">${esc(t("rNone"))}</span>`}</button>`
+   +`<div class="ck"><span>${esc(t("rNoRate"))}</span>${e.noRate?`<span class="ko">${e.noRate}</span>`:`<span class="ok">${esc(t("rNone"))}</span>`}</div>`
+   +`<div class="ck"><span>${esc(t("rGio"))}</span>${gio}</div>`;
+  renderModels();
+}
+document.addEventListener("click",e=>{const b=e.target.closest("#eReady [data-go]");if(!b||!b.classList.contains("go"))return;const p=$("#expPer").value;catF=b.dataset.go==="conf"?"__conf":"__dup";$("#archMonth").value=p.includes("Q")?"":p;$$("#archChips button").forEach(x=>x.classList.toggle("on",x.dataset.f==="all"));show("arch")});
+function openEl(on){$("#elSheet").classList.toggle("hide",!on)}
+$("#xEl").onclick=()=>openEl(true);$("#elClose").onclick=()=>openEl(false);$("#elDim").onclick=()=>openEl(false);
+const elBlocks=async()=>{const e=elster(perDocs());return head(t("elTitle")+" · "+perLabel(),t("elSub")).concat([{kv:[[t("k81"),eur(e.k81)],[t("k86"),eur(e.k86)],[t("k66"),eur(e.k66)],[t("k83"),eur(e.k83)]]},{p:t("elsterNote")}])};
+const elName=()=>"Waiblingen-Ink_USt-Schaetzung_"+($("#expPer").value||"")+".pdf";
+$("#elPrint").onclick=()=>output("print",elBlocks,elName(),[],t("elTitle")+" · "+perLabel());
+$("#elPdf").onclick=()=>output("pdf",elBlocks,elName(),[],t("elTitle")+" · "+perLabel());
+$("#elShare").onclick=()=>output("share",elBlocks,elName(),[],t("elTitle")+" · "+perLabel());
+
+/* ---------- Archivio e Cerca: esporta esattamente quello che vedi ---------- */
+const xPhotos={archX:true,resX:false};
+function shownDocs(listSel){return [...new Set($$(listSel+" [data-open]").map(r=>r.dataset.open))].map(id=>docs.find(d=>d.id===id)).filter(Boolean)}
+function viewLabel(box){if(box==="resX")return "“"+$("#q").value.trim()+"”";const parts=[];const f=$("#archChips .on");if(f&&f.dataset.f!=="all")parts.push(f.textContent.trim());const c=$("#catChips .on");if(c&&c.dataset.c)parts.push(c.textContent.trim());const m=$("#archMonth").value;if(m)parts.push(mon(m));return parts.join(" · ")}
+function renderXbar(box,listSel){const el=$("#"+box);if(!el)return;const n=shownDocs(listSel).length;el.classList.toggle("hide",!n);if(!n)return;
+  el.innerHTML=`<div class="xt">${esc(t("xT")(n,viewLabel(box)))}</div><div class="grid3"><button class="primary ibtn" data-x="print"><i>🖨</i><span>${esc(t("oPrint"))}</span></button><button class="secondary ibtn" data-x="pdf"><i>⬇</i><span>PDF</span></button><button class="secondary ibtn" data-x="share"><i>↗</i><span>${esc(t("oShare"))}</span></button></div><div class="grid2"><button class="secondary ibtn" data-x="xls"><i>▦</i><span>Excel</span></button><button class="secondary ibtn" data-x="mail"><i>✉</i><span>${esc(t("oEmail"))}</span></button></div><label class="tg"><input type="checkbox" data-ph ${xPhotos[box]?"checked":""}> ${esc(t("xPh"))}</label>`}
+function renderXbars(){renderXbar("archX","#archList");renderXbar("resX","#resList")}
+const _renderAll2=renderAll;renderAll=function(){_renderAll2();renderXbars()};
+const _runSearch=runSearch;runSearch=function(){_runSearch();renderXbars()};$("#q").oninput=runSearch;
+document.addEventListener("change",e=>{const c=e.target.closest(".xbar [data-ph]");if(c)xPhotos[c.closest(".xbar").id]=c.checked});
+function listBlocks(list,title,photos){return async()=>{let b=head(title).concat([listTable(list)]);const inn=list.filter(d=>d.type==="cliente"),out=list.filter(d=>d.type!=="cliente");b.push({kv:[[t("pTotalIn"),eur(sumOf(inn))],[t("pTotalOut"),eur(sumOf(out))],[t("pDocs"),String(list.length)]]});if(photos)for(const d of list)b=b.concat(await docBlocks(d,false));return b}}
+document.addEventListener("click",async e=>{const b=e.target.closest(".xbar [data-x]");if(!b)return;const box=b.closest(".xbar").id,list=shownDocs(box==="resX"?"#resList":"#archList").sort((x,y)=>String(x.date).localeCompare(String(y.date)));if(!list.length)return;
+  const lab=viewLabel(box),title=t("pList")+(lab?" · "+lab:""),name="Belege_"+(safe(lab)||"Auswahl")+"_"+todayISO()+".pdf",ids=list.map(d=>d.id),k=b.dataset.x;
+  if(k==="xls"){try{await exportXls(list,name.replace(/\.pdf$/,".xlsx"),null);api("track",{what:"excel",ids,det:name}).catch(()=>{})}catch(err){toast(errText(err.message))}return}
+  if(k==="mail"){const f=async()=>{const bl=await listBlocks(list,title,xPhotos[box])();const blob=await pdfOf(bl);const file=new File([blob],name,{type:"application/pdf"});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:name})}catch(er){if(er&&er.name!=="AbortError"){const r=$("#shareReady");r.classList.remove("hide");r.onclick=async()=>{r.classList.add("hide");try{await navigator.share({files:[file],title:name})}catch(_){}}}}}
+      else{dl(name,blob);location.href="mailto:?subject="+encodeURIComponent("Waiblingen Ink · "+title)+"&body="+encodeURIComponent(t("oMailBody"))}
+      api("track",{what:"invio",ids,det:"Email · "+name}).catch(()=>{})};
+    if(outBusy)return;outBusy=true;toast(t("oPreparing"));try{await f()}catch(err){toast(errText(err.message))}finally{outBusy=false}return}
+  output(k,listBlocks(list,title,xPhotos[box]),name,ids,name)});
