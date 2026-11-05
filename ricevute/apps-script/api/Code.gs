@@ -278,7 +278,7 @@ function gemini_(parts, json) {
 const RECEIPT_PROMPT = `Sei il lettore di documenti contabili dello studio di tatuaggi Waiblingen Ink (Denis Cicala & Linda Salihu-Cicala GbR, Lange Straße 10, 71332 Waiblingen, Germania). Rispondi SOLO con JSON.
 TIPI
 "cliente" = ricevuta emessa DALLO studio. Blocchetto RNK Verlag Nr. 2952 F con timbro "Waiblingen Ink Garden of Tattoo". client = nome scritto a mano a sinistra sotto il timbro. date = casella "Datum" scritta a mano, giorno/mese/anno a due cifre (30/10/26 = 2026-10-30). art = lettera scritta a mano in alto a destra: "D" tatuaggio di Denis, "G" tatuaggio di Giova Tattoos; "W" se la ricevuta è dello studio a un tatuatore (affitto postazione, Platzmiete) e allora category "platzmiete". number = numero STAMPATO in basso nella casella "Verk." dopo l'asterisco (*226276-25 -> "226276-25"). note = testo di "Gegenstand". total = riga di totale (colonne EUR e Cent). category: "einnahme" (tatuaggio) o "anzahlung" (acconto) o "platzmiete". Se in "Gegenstand" c'è "Anz." o "Anz" (abbreviazione di Anzahlung) è un ACCONTO: category "anzahlung" e note "Anzahlung". "Tattoo" = "einnahme". La lettera D/G/W in alto a destra può essere piccola, sbiadita o vicino al timbro: guarda con attenzione prima di dire che manca.
-"fattura" = fattura di un fornitore ancora da pagare (scadenza, "zahlbar bis", "fällig", IBAN per bonifico).
+"fattura" = fattura (Rechnung) di un fornitore intestata allo studio, già pagata: tutto ciò che si carica è già pagato, quindi non serve la scadenza. Le ricevute sul blocchetto verde di Giovanni Scorpiniti (timbro "Giova Tattoos", Kastanienweg 3, Korb) intestate a "Denis Cicala e Linda Salihu-Cicala GbR" sono fatture di Giova Tattoos allo studio: type "fattura", vendor "Giovanni Scorpiniti (Giova Tattoos)", art "G", category "sonstiges", number = numero stampato dopo l'asterisco.
 "acquisto" = scontrino o fattura di un acquisto già pagato (anche addebito automatico, PayPal, carta).
 CAMPI {"type":"cliente|fattura|acquisto","client":string|null,"vendor":string|null,"date":"YYYY-MM-DD"|null,"number":string|null,"total":number|null,"rate":19|7|0|null,"art":"D"|"G"|"W"|null,"note":string|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"unsure":[campi incerti]}
 Abbonamenti e servizi digitali (Google, Apple, Wix, Kalender.digital, Adobe) -> "software". Non inventare: se non leggibile metti null.`;
@@ -298,7 +298,7 @@ function ask_(q, admin, lang) {
   const docs = listDocs_().filter(d => admin || !d.priv);
   const rows = docs.map(d => [d.id, d.date, d.type, d.art || '', d.client || d.vendor || '', d.number || '', d.cat, d.total, d.rate === '' ? '' : d.rate, d.status, d.priv ? 'privato' : ''].join('|'));
   const prompt = `Sei l'assistente contabile dell'app Ricevute di Waiblingen Ink. Oggi è ${Utilities.formatDate(new Date(), 'Europe/Berlin', 'yyyy-MM-dd')}.
-Archivio, una riga per documento: id|data|tipo(cliente=incasso, acquisto=spesa pagata, fattura=spesa da pagare)|chi(D Denis, G Giova Tattoos, W studio verso tatuatore)|cliente o fornitore|numero|categoria|totale lordo €|aliquota|stato(confirm=da confermare)|privato
+Archivio, una riga per documento: id|data|tipo(cliente=incasso, acquisto=scontrino pagato, fattura=fattura di fornitore già pagata)|chi(D Denis, G Giova Tattoos, W studio verso tatuatore)|cliente o fornitore|numero|categoria|totale lordo €|aliquota|stato(confirm=da confermare)|privato
 ${rows.join('\n')}
 Domanda: ${q}
 Rispondi SOLO con JSON {"answer":"risposta breve in ${de ? 'TEDESCO' : 'italiano'}, senza calcoli lunghi","ids":["id di TUTTI i documenti che compongono la risposta"],"kind":"incassi|spese|misto|altro"}.
@@ -364,7 +364,7 @@ Oggetto: ${raw.subject}
 Testo:
 ${String(raw.body || '').slice(0, 6000)}
 
-Decidi se è la PROVA di una SPESA dello studio o di una fattura da pagare (scontrino, fattura, ricevuta di pagamento, addebito). NON sono spese: newsletter, pubblicità, conferme di ordine senza importo, incassi ricevuti, resoconti di vendite, avvisi di sicurezza.
+Decidi se è la PROVA di una SPESA dello studio o di una fattura di un fornitore (scontrino, fattura, ricevuta di pagamento, addebito). NON sono spese: newsletter, pubblicità, conferme di ordine senza importo, incassi ricevuti, resoconti di vendite, avvisi di sicurezza.
 Rispondi SOLO con JSON {"expense":true|false,"type":"acquisto|fattura","vendor":string,"date":"YYYY-MM-DD","number":string|null,"total":number|null,"rate":19|7|0|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"note":"breve descrizione"}.
 Abbonamenti digitali -> "software". Se non c'è un importo chiaro, expense=false.` }];
   if (raw.att) parts.push({ inline_data: { mime_type: raw.att.mime, data: raw.att.data } });
