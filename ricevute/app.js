@@ -557,8 +557,9 @@ function agChipsOf(f){const c=[],typeN={cliente:t("tCli"),acquisto:t("tAcq"),fat
   if(f.min!=null)c.push(["min",null,"≥ "+eur(f.min)]);if(f.max!=null)c.push(["max",null,"≤ "+eur(f.max)]);
   if(f.status)c.push(["status",null,f.status==="confirm"?t("toConfirm"):L2("confermati","bestätigt")]);
   if(f.priv===true)c.push(["priv",null,L2("privati","privat")]);
+  if(agState&&agState.item)c.unshift(["item",null,"🛒 "+agState.item.name]);
   return c}
-function agDrop(f,k,v){f=JSON.parse(JSON.stringify(f));if(k==="date"){f.from=null;f.to=null}else if(Array.isArray(f[k]))f[k]=f[k].filter(x=>x!==v);else f[k]=null;return f}
+function agDrop(f,k,v){if(k==="item"){agState.item=null;agState.ask="list";return f}f=JSON.parse(JSON.stringify(f));if(k==="date"){f.from=null;f.to=null}else if(Array.isArray(f[k]))f[k]=f[k].filter(x=>x!==v);else f[k]=null;return f}
 const fldName=k=>({cat:L2("Categoria","Kategorie"),rate:L2("IVA","MwSt"),status:"Status",priv:L2("Privato","Privat"),art:L2("Chi","Wer")}[k]);
 const fldVal=(k,v)=>k==="cat"?(CATS[v]?CATS[v][L()]:v||"–"):k==="rate"?(v==null||v===""?"–":v+" %"):k==="status"?(v==="confirm"?t("toConfirm"):L2("confermato","bestätigt")):k==="priv"?(v?L2("sì","ja"):L2("no","nein")):k==="art"?(ART_N[v]||v||"–"):String(v);
 const same=(k,a,b)=>k==="priv"?!!a===!!b:k==="rate"?Number(a)===Number(b)&&a!==""&&a!=null:String(a??"")===String(b??"");
@@ -578,6 +579,8 @@ function agRender(){const st=agState,box=$("#askOut");if(!st)return;const f=st.f
     const ok=$("#agOk");if(ok)ok.onclick=async()=>{ok.disabled=true;ok.textContent="…";try{const r=await api("agentApply",{ids:st.ids,set:st.set,q:st.q});toast(L2("Fatto: ","Erledigt: ")+r.n+" "+t("docsN"));agState=null;box.innerHTML=`<div class="agwarn" style="background:#DCFCE7;border-color:#bbf7d0;color:#14532d">✓ ${esc(L2("Fatto","Erledigt"))}: ${r.n} ${esc(t("docsN"))}. ${esc(L2("Puoi annullare dalla Home per 24 ore.","Rückgängig auf der Startseite, 24 Stunden lang."))}</div>`;await load()}catch(err){ok.disabled=false;toast(errText(err.message))}};
     const no=$("#agNo");if(no)no.onclick=()=>{agState=null;box.innerHTML="";agHomeShow()};
     return}
+  if(st.ask==="items"&&st.item){agItems(st,h,list);return}
+  if(list.length&&(st.ask==="count"||st.ask==="sum")){const s2=list.filter(d=>!d.priv).reduce((a,d)=>a+(+d.total||0),0);h+=`<div class="aghead"><b>${st.ask==="count"?esc(list.length+" "+t("docsN")):esc(eur(r2(s2)))}</b><span>${esc(st.title||"")}</span></div>`}
   const arts={};list.forEach(d=>{if(d.type==="cliente"&&!d.priv&&d.art)arts[d.art]=(arts[d.art]||0)+(+d.total||0)});const ak=Object.keys(arts);
   h+=list.length?`<div class="list" id="agList">${list.map(d=>rowHTML(d,[])).join("")}${totHTML(list)}${ak.length>1?`<div class="agarts">${ak.map(a=>`<span>${esc(ART_N[a]||a)} <b>${esc(eur(r2(arts[a])))}</b></span>`).join("")}</div>`:""}</div><div class="xbar hide" id="agX"></div><button type="button" class="agsave" id="agSave">☆ ${esc(L2("Salva come richiesta fissa","Als festen Auftrag speichern"))}</button>`:`<div class="list" style="padding:14px">${esc(t("noRes"))}</div>`;
   box.innerHTML=h;renderXbar("agX","#agList");
@@ -602,3 +605,29 @@ const _askSubmit=$("#askForm").onsubmit;$("#askForm").onsubmit=e=>{if(!agMode)re
 (function(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition,m=$("#askMic");if(!SR||!m)return;m.classList.remove("hide");let rec=null;
   m.onclick=()=>{if(rec){rec.stop();return}rec=new SR();rec.lang=lang==="de"?"de-DE":"it-IT";rec.interimResults=true;m.classList.add("rec");
     rec.onresult=ev=>{$("#askIn").value=[...ev.results].map(r=>r[0].transcript).join("")};rec.onend=()=>{m.classList.remove("rec");rec=null};rec.onerror=()=>{};rec.start()}})();
+
+/* ---------- Fai per me: domande su un prodotto (righe degli scontrini) ---------- */
+const LINES={};
+const lineMatch=(ln,words)=>{const x=norm((ln.desc||"")+" "+(ln.name||""));return words.some(w=>x.includes(norm(w)))};
+async function agItems(st,h0,cand){const box=$("#askOut"),tok=st._tok=Math.random();
+  const withP=cand.filter(d=>d.photoId),noP=cand.length-withP.length;
+  const draw=(inner)=>{if(st._tok!==tok||agState!==st)return;box.innerHTML=h0+inner};
+  let need=withP.filter(d=>!(d.id in LINES)).map(d=>d.id),done=withP.length-need.length,failed=[];
+  while(need.length){draw(`<div class="info"><span class="spin"></span><span>${esc(L2("Leggo le righe degli scontrini: ","Ich lese die Belegzeilen: ")+done+" / "+withP.length)}</span></div><p class="aggot">${esc(L2("La prima volta ci vuole un po', poi resta salvato.","Beim ersten Mal dauert es etwas, danach ist es gespeichert."))}</p>`);
+    const part=need.splice(0,6);try{const r=await api("lines",{ids:part});Object.assign(LINES,r.lines||{});failed=failed.concat(r.missing||[])}catch(err){failed=failed.concat(part)}
+    done+=part.length;if(st._tok!==tok||agState!==st)return}
+  const words=st.item.words&&st.item.words.length?st.item.words:[st.item.name];
+  const hits=withP.map(d=>({d,ls:(LINES[d.id]||[]).filter(l=>lineMatch(l,words))})).filter(x=>x.ls.length).sort((a,b)=>String(a.d.date).localeCompare(String(b.d.date)));
+  let qty=0,tot=0;const other={};hits.forEach(x=>x.ls.forEach(l=>{if(l.unit==="pz")qty+=+l.qty||0;else other[l.unit]=(other[l.unit]||0)+(+l.qty||0);tot+=+l.total||0}));
+  const nm=st.item.name,lnTxt=l=>`${l.qty!=null?(+l.qty).toLocaleString(lang==="de"?"de-DE":"it-IT")+(l.unit==="pz"?" ×":" "+l.unit):""} ${l.name||l.desc}${l.total!=null?" · "+eur(l.total):""}`;
+  let head;
+  if(!hits.length)head=`<div class="aghead"><b>${esc(L2("Non trovato","Nicht gefunden"))}</b><span>${esc(L2(`Ho letto ${withP.length} scontrini e "${nm}" non c'è.`,`${withP.length} Belege gelesen, "${nm}" ist nicht dabei.`))}</span></div>`;
+  else if(st.pick==="last"||st.pick==="first"){const x=st.pick==="last"?hits[hits.length-1]:hits[0],d=x.d;
+    head=`<div class="aghead"><span>${esc(st.pick==="last"?L2("Ultima volta","Zuletzt"):L2("Prima volta","Zum ersten Mal"))}</span><b>${esc(fmtDate(d.date))}</b><span>${esc(d.vendor||"")} · ${esc(x.ls.map(lnTxt).join(", "))}</span></div>`}
+  else{const q2=[qty?qty.toLocaleString(lang==="de"?"de-DE":"it-IT")+" "+L2("pezzi","Stück"):""].concat(Object.keys(other).map(u=>other[u].toLocaleString()+" "+u)).filter(Boolean).join(" + ");
+    head=`<div class="aghead"><span>${esc(nm)}</span><b>${esc(q2||"–")} · ${esc(eur(r2(tot)))}</b><span>${esc(L2(`in ${hits.length} scontrini su ${withP.length} letti`,`in ${hits.length} von ${withP.length} gelesenen Belegen`))}</span></div>`}
+  const warn=(noP||failed.length)?`<p class="aggot">${esc(L2(`${noP?noP+" documenti senza foto non controllati. ":""}${failed.length?failed.length+" scontrini non letti, riprova più tardi.":""}`,`${noP?noP+" Belege ohne Foto nicht geprüft. ":""}${failed.length?failed.length+" Belege nicht gelesen, später nochmal versuchen.":""}`))}</p>`:"";
+  const rows=hits.slice().reverse().map(x=>rowHTML(x.d,[])+`<div class="aglines">${x.ls.map(l=>`<span>${esc(lnTxt(l))}</span>`).join("")}</div>`).join("");
+  draw(head+warn+(hits.length?`<div class="list" id="agList">${rows}<div class="tot"><div class="totn">${esc(nm)} · ${hits.length} ${esc(t("docsN"))}</div><div class="totr"><span>${esc(L2("Spesa solo per questo prodotto","Ausgaben nur für dieses Produkt"))}</span><b>${esc(eur(r2(tot)))}</b></div></div></div><div class="xbar hide" id="agX"></div><button type="button" class="agsave" id="agSave">☆ ${esc(L2("Salva come richiesta fissa","Als festen Auftrag speichern"))}</button>`:""));
+  renderXbar("agX","#agList");
+  const sv=$("#agSave");if(sv)sv.onclick=async()=>{sv.disabled=true;try{const r=await api("saveReq",{name:st.title||st.q,q:st.q});savedReqs=r.saved||[];agSavedRender();sv.textContent="★ "+L2("Salvata","Gespeichert")}catch(err){sv.disabled=false;toast(errText(err.message))}}}

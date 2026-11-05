@@ -76,6 +76,7 @@ function doPost(e) {
       case 'history': return out_({ items: history_(req.id) });
       case 'ask': return out_(ask_(req.q, admin, req.lang));
       case 'agent': need(); return out_(agent_(req.q, req.lang, user.email));
+      case 'lines': need(); return out_(lines_(req.ids));
       case 'agentApply': need(); return out_(agentApply_(req.ids, req.set, req.q, user.email));
       case 'saveReq': need(); { const L = JSON.parse(prop('SAVED') || '[]'); L.push({ name: String(req.name || '').slice(0, 60), q: String(req.q || '').slice(0, 500), by: user.email }); P().setProperty('SAVED', JSON.stringify(L.slice(-20))); log_(user.email, 'richiesta salvata', '', req.name); return out_({ saved: L.slice(-20) }); }
       case 'delReq': need(); { const L = JSON.parse(prop('SAVED') || '[]'); L.splice(Number(req.i), 1); P().setProperty('SAVED', JSON.stringify(L)); return out_({ saved: L }); }
@@ -582,7 +583,8 @@ function agent_(q, lang, who) {
 NON rispondi con i dati: traduci la richiesta in un FILTRO sui documenti e, se chiesto, in una MODIFICA. I conti li fa l'app.
 Documenti: tipo "cliente" (ricevuta a cliente = incasso), "acquisto" (scontrino pagato), "fattura" (fattura di fornitore già pagata). Chi: "D" Denis, "G" Giova Tattoos (Giovanni), "W" Waiblingen Ink verso tatuatore (affitto postazione). "Tatuaggi" = ricevute a cliente. Categorie: ${CATS.join(', ')} (einnahme tatuaggio, anzahlung acconto, platzmiete, material, miete, energie, telefon, software abbonamenti, versicherung, werbung, fahrzeug auto e carburante, buero ufficio, gebuehren, steuer, beratung, sonstiges altro).
 Rispondi SOLO con JSON:
-{"kind":"list|edit|answer","title":"titolo breve della pagina","filter":{"from":"YYYY-MM-DD"|null,"to":"YYYY-MM-DD"|null,"weekdays":[1-7, 1=lunedì]|[],"types":[]|["cliente","acquisto","fattura"],"arts":[]|["D","G","W"],"cats":[],"text":"parola da cercare in cliente/fornitore/numero/nota"|null,"min":numero|null,"max":numero|null,"status":"confirm"|"ok"|null,"priv":true|false|null},"set":{"cat":"...","rate":0|7|19,"status":"ok","priv":true|false,"art":"D|G|W"},"answer":"frase breve"}
+{"kind":"list|edit|answer","title":"titolo breve della pagina","filter":{"from":"YYYY-MM-DD"|null,"to":"YYYY-MM-DD"|null,"weekdays":[1-7, 1=lunedì]|[],"types":[]|["cliente","acquisto","fattura"],"arts":[]|["D","G","W"],"cats":[],"text":"parola da cercare in cliente/fornitore/numero/nota"|null,"min":numero|null,"max":numero|null,"status":"confirm"|"ok"|null,"priv":true|false|null},"set":{"cat":"...","rate":0|7|19,"status":"ok","priv":true|false,"art":"D|G|W"},"ask":"list|count|sum|items","pick":"all|last|first","item":{"name":"nome del prodotto","words":["parole da cercare nelle righe dello scontrino, anche abbreviazioni, marca, tedesco e italiano"]}|null,"answer":"frase breve"}
+PRODOTTI: se l'utente chiede di un ARTICOLO comprato (quanti pezzi o pacchi, quanto speso solo per quel prodotto, es. Zewa, guanti, inchiostro, carta igienica, benzina), metti "ask":"items" e "item" con il nome e 3-8 parole di ricerca (marca, nome tedesco e italiano, abbreviazioni da scontrino: es. Zewa -> ["zewa","toilettenpapier","klopapier","toilet","carta igienica"]); in quel caso NON mettere il prodotto in filter.text e metti types ["acquisto","fattura"]. Se chiede QUANDO l'ha comprato l'ultima volta metti "pick":"last", la prima volta "pick":"first", altrimenti "all". Se non dice un periodo lascia from e to null: si cerca in tutti gli scontrini. "ask":"count" se chiede quanti documenti, "sum" se chiede quanto in tutto, altrimenti "list".
 Regole: "list" per elenchi, riepiloghi, PDF, totali. "edit" solo se l'utente chiede di cambiare, mettere, segnare, confermare (in "set" solo i campi da cambiare, tra cat, rate, status, priv, art). "answer" solo se la richiesta non riguarda ricevute e fatture: allora rispondi gentilmente che puoi aiutare solo con la contabilità. Mesi senza anno = l'anno più recente non nel futuro. Il titolo e la risposta in ${lang === 'de' ? 'TEDESCO' : 'italiano'}.
 Richiesta: ${q}`;
   const r = ai_([{ text: prompt }], true);
@@ -602,7 +604,11 @@ Richiesta: ${q}`;
   if (['D', 'G', 'W'].indexOf(s0.art) >= 0) set.art = s0.art;
   const kind = r.kind === 'edit' && Object.keys(set).length ? 'edit' : r.kind === 'answer' ? 'answer' : 'list';
   log_(who, 'fai per me', '', q);
-  return { kind, title: String(r.title || q).replace(/\s+[\u2013\u2014-]+\s+/g, ' · ').slice(0, 120), filter, set, answer: String(r.answer || '') };
+  const it = r.item && r.item.name ? { name: String(r.item.name).slice(0, 60), words: (Array.isArray(r.item.words) ? r.item.words : []).concat(r.item.name).map(x => String(x).toLowerCase().trim()).filter(x => x.length >= 3).slice(0, 10) } : null;
+  const ask = it ? 'items' : ['count', 'sum'].indexOf(r.ask) >= 0 ? r.ask : 'list';
+  if (it) { filter.text = null; if (!filter.types.length) filter.types = ['acquisto', 'fattura']; }
+  const pick = it && ['last', 'first'].indexOf(r.pick) >= 0 ? r.pick : 'all';
+  return { ask, pick, item: it, kind, title: String(r.title || q).replace(/\s+[\u2013\u2014-]+\s+/g, ' · ').slice(0, 120), filter, set, answer: String(r.answer || '') };
 }
 function agentApply_(ids, set, q, who) {
   ids = (Array.isArray(ids) ? ids : []).slice(0, 150).map(String);
@@ -618,4 +624,34 @@ function agentApply_(ids, set, q, who) {
   ids.forEach(id => { const x = by[id]; if (!x || x.deleted) return; const d = Object.assign({}, x, s); d.priv = s.priv !== undefined ? s.priv : x.priv === true; saveDoc_(d, null, null, who + ' · Fai per me'); n++; });
   log_(who, 'fai per me: modifica', '', n + ' documenti · ' + String(q || '').slice(0, 200));
   return { ok: true, n };
+}
+
+/* ================= righe degli scontrini: lette dalla foto una volta sola e salvate nel foglio "Articoli" ================= */
+const LINES_PROMPT = `Leggi lo scontrino o la fattura nella foto ed elenca TUTTE le righe di articoli comprati. Rispondi SOLO con JSON {"lines":[{"desc":"testo della riga come stampato","name":"nome chiaro del prodotto con marca, in tedesco come sullo scontrino","qty":numero di pezzi o confezioni (se c'è "2 x" o "2 St" metti 2; se non indicato 1; per peso o litri metti la quantità e unit),"unit":"pz|kg|l","price":prezzo unitario in euro|null,"total":totale della riga in euro}]}. Gli sconti sono righe con total negativo. Non mettere subtotali, IVA, pagamento, resto. Se non leggi un valore metti null.`;
+function linesSheet_() {
+  const ss = SpreadsheetApp.openById(prop('SHEET_ID'));
+  let s = ss.getSheetByName('Articoli');
+  if (!s) { s = ss.insertSheet('Articoli'); s.appendRow(['id', 'quando', 'righe']); }
+  return s;
+}
+function lines_(ids) {
+  ids = (Array.isArray(ids) ? ids : []).slice(0, 8).map(String);
+  const sh = linesSheet_(), v = sh.getDataRange().getValues(), cache = {};
+  for (let i = 1; i < v.length; i++) cache[v[i][0]] = v[i][2];
+  const out = {}, missing = [], t0 = Date.now();
+  ids.forEach(id => {
+    if (cache[id]) { try { out[id] = JSON.parse(cache[id]); return; } catch (e) {} }
+    if (Date.now() - t0 > 4 * 60 * 1000) { missing.push(id); return; }
+    try {
+      const p = photo_(id);
+      if (p.none) { out[id] = null; return; }
+      const r = ai_([{ text: LINES_PROMPT }, { inline_data: { mime_type: p.mime, data: p.data } }], true);
+      const L = (Array.isArray(r.lines) ? r.lines : []).slice(0, 80).map(x => ({ desc: String(x.desc || '').slice(0, 80), name: String(x.name || '').slice(0, 80),
+        qty: isFinite(x.qty) && x.qty !== null && x.qty !== '' ? Number(x.qty) : 1, unit: ['pz', 'kg', 'l'].indexOf(x.unit) >= 0 ? x.unit : 'pz',
+        price: isFinite(x.price) && x.price !== null && x.price !== '' ? Number(x.price) : null, total: isFinite(x.total) && x.total !== null && x.total !== '' ? Number(x.total) : null }));
+      sh.appendRow([id, new Date().toISOString(), JSON.stringify(L)]);
+      out[id] = L;
+    } catch (e) { missing.push(id); log_('fai per me', 'righe errore', id, String(e.message).slice(0, 200)); }
+  });
+  return { lines: out, missing };
 }
