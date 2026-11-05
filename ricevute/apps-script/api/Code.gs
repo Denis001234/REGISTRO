@@ -72,7 +72,7 @@ function doPost(e) {
       }
       case 'photo': return out_(photo_(req.id));
       case 'history': return out_({ items: history_(req.id) });
-      case 'ask': return out_(ask_(req.q, admin));
+      case 'ask': return out_(ask_(req.q, admin, req.lang));
       case 'importNow': need(); return out_({ imported: importMail() });
       case 'setKey': need(); P().setProperty('GEMINI_KEY', String(req.key || '').trim()); log_(user.email, 'chiave gemini', '', 'aggiornata'); return out_({ ok: true });
       case 'setClaudeKey': need(); {
@@ -270,7 +270,8 @@ function readImage_(b64, mime) {
 }
 
 /* ================= assistente ================= */
-function ask_(q, admin) {
+function ask_(q, admin, lang) {
+  const de = lang === 'de';
   q = String(q || '').slice(0, 500);
   const docs = listDocs_().filter(d => admin || !d.priv);
   const rows = docs.map(d => [d.id, d.date, d.type, d.art || '', d.client || d.vendor || '', d.number || '', d.cat, d.total, d.rate === '' ? '' : d.rate, d.status, d.priv ? 'privato' : ''].join('|'));
@@ -278,8 +279,8 @@ function ask_(q, admin) {
 Archivio, una riga per documento: id|data|tipo(cliente=incasso, acquisto=spesa pagata, fattura=spesa da pagare)|chi(D Denis, G Giova Tattoos, W studio verso tatuatore)|cliente o fornitore|numero|categoria|totale lordo €|aliquota|stato(confirm=da confermare)|privato
 ${rows.join('\n')}
 Domanda: ${q}
-Rispondi SOLO con JSON {"answer":"risposta breve in italiano, senza calcoli lunghi","ids":["id di TUTTI i documenti che compongono la risposta"],"kind":"incassi|spese|misto|altro"}.
-Le spese private non contano. Se la domanda non riguarda l'archivio, rispondi gentilmente che puoi aiutare solo con ricevute e fatture.`;
+Rispondi SOLO con JSON {"answer":"risposta breve in ${de ? 'TEDESCO' : 'italiano'}, senza calcoli lunghi","ids":["id di TUTTI i documenti che compongono la risposta"],"kind":"incassi|spese|misto|altro"}.
+Le spese private non contano. Se la domanda non riguarda l'archivio, rispondi gentilmente che puoi aiutare solo con ricevute e fatture. Lingua della risposta: ${de ? 'tedesco' : 'italiano'}.`;
   const r = ai_([{ text: prompt }], true);
   const set = {}; docs.forEach(d => set[d.id] = d);
   const ids = (r.ids || []).filter(id => set[id]);

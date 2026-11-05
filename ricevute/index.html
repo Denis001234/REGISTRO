@@ -111,9 +111,10 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
 <body>
 <section id="v-login" class="hide">
   <div style="width:64px;height:64px;border-radius:18px;background:#0057FF;display:flex;align-items:center;justify-content:center"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"></path><path d="M9 7h6"></path><path d="M9 11h6"></path><path d="M9 15h4"></path></svg></div>
-  <div><h1 style="margin:0;font-size:32px;font-weight:800;letter-spacing:-.5px">Ricevute e fatture</h1><p style="margin:8px 0 0;color:#475569;font-size:16px">Waiblingen Ink · Belege und Rechnungen</p></div>
+  <div><h1 style="margin:0;font-size:32px;font-weight:800;letter-spacing:-.5px" data-t="loginTitle">Ricevute e fatture</h1><p style="margin:8px 0 0;color:#475569;font-size:16px">Waiblingen Ink</p></div>
   <a id="loginBtn" class="primary" style="display:flex;align-items:center;justify-content:center;text-decoration:none" href="#" data-t="login">Accedi con Google</a>
   <p style="margin:0;font-size:13px;color:#475569;text-align:center" data-t="loginTxt">Entra solo chi è stato invitato.</p>
+  <div class="langs" style="justify-content:center"><button data-l="it" class="on">IT</button><button data-l="de">DE</button></div>
   <p id="loginErr" style="margin:0;font-size:14px;color:#b91c1c;text-align:center"></p>
 </section>
 
@@ -129,7 +130,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
     <main style="margin-top:8px">
       <div class="search">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
-        <input id="q" type="search" autocomplete="off" data-ph="searchPh" placeholder="Cerca cliente, numero, fornitore, tatuaggio…" aria-label="Cerca">
+        <input id="q" type="search" autocomplete="off" data-ph="searchPh" placeholder="Cerca cliente, numero, fornitore, tatuaggio…" aria-label="Cerca" data-al="alSearch">
       </div>
       <div id="searchRes" class="hide">
         <div class="head"><b id="resTitle"></b><button class="link" id="clearQ" data-t="clear">Annulla</button></div>
@@ -150,9 +151,9 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
         </div>
         <div class="head"><b data-t="latest">Ultimi documenti</b><button class="link" id="seeAll" data-t="seeAll">Vedi tutti</button></div>
         <div class="list" id="latest"></div>
-        <div id="keyBox" class="warn hide" style="flex-direction:column;gap:8px"><b>Manca la chiave Gemini: incollala qui una volta sola (si crea gratis su aistudio.google.com/apikey con l'account info).</b><div class="ask" style="width:100%"><input id="keyIn" type="password" autocomplete="off" aria-label="Chiave Gemini" placeholder="AIza…"><button type="button" id="keyBtn">OK</button></div></div>
-        <div id="claudeBox" class="warn hide" style="flex-direction:column;gap:8px"><b id="claudeTxt">Chiave Claude: incollala qui una volta sola. Con la chiave, le foto le legge Claude e Gemini resta di riserva.</b><div class="ask" style="width:100%"><input id="claudeIn" type="password" autocomplete="off" aria-label="Chiave Claude" placeholder="sk-ant-…"><button type="button" id="claudeBtn">OK</button></div></div>
-        <div id="impBox" class="warn hide" style="flex-direction:column;gap:8px;background:#eef4ff;border-color:#c7d8ff"><b id="impTxt"></b><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><a class="link" id="impLink" target="_blank" rel="noopener">Apri cartella</a><button class="link" id="impBtn" type="button">Avvia importazione</button></div></div>
+        <div id="keyBox" class="warn hide" style="flex-direction:column;gap:8px"><b data-t="keyGeminiTxt">Manca la chiave Gemini: incollala qui una volta sola (si crea gratis su aistudio.google.com/apikey con l'account info).</b><div class="ask" style="width:100%"><input id="keyIn" type="password" autocomplete="off" aria-label="Chiave Gemini" data-al="alGemini" placeholder="AIza…"><button type="button" id="keyBtn">OK</button></div></div>
+        <div id="claudeBox" class="warn hide" style="flex-direction:column;gap:8px"><b id="claudeTxt" data-t="keyClaudeTxt">Chiave Claude: incollala qui una volta sola. Con la chiave, le foto le legge Claude e Gemini resta di riserva.</b><div class="ask" style="width:100%"><input id="claudeIn" type="password" autocomplete="off" aria-label="Chiave Claude" data-al="alClaude" placeholder="sk-ant-…"><button type="button" id="claudeBtn">OK</button></div></div>
+        <div id="impBox" class="warn hide" style="flex-direction:column;gap:8px;background:#eef4ff;border-color:#c7d8ff"><b id="impTxt"></b><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><a class="link" id="impLink" target="_blank" rel="noopener" data-t="openFolder">Apri cartella</a><button class="link" id="impBtn" type="button" data-t="startImport">Avvia importazione</button></div></div>
         <div id="aiState" style="font-size:12px;text-align:center;color:var(--muted)"></div>
         <div id="stLinks" style="font-size:13px;text-align:center"></div>
         <div style="display:flex;justify-content:space-between"><button class="link" id="checkMail" data-t="checkMail">Controlla le email ora</button><button class="link" id="logout" data-t="logout" style="color:var(--muted)">Esci</button></div>
@@ -161,7 +162,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
   </section>
 
   <section id="v-card" class="hide">
-    <div class="bar"><button class="back" id="cardBack" aria-label="Indietro"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></button><b id="cardTitle">Documento</b></div>
+    <div class="bar"><button class="back" id="cardBack" aria-label="Indietro" data-al="alBack"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></button><b id="cardTitle">Documento</b></div>
     <main style="padding-top:8px">
       <div class="photo" id="cardPhoto"></div>
       <div id="ocrState" class="info hide"><span class="spin"></span><span data-t="reading">L'AI sta leggendo il documento…</span></div>
@@ -175,7 +176,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
       <div class="form">
         <div class="field" id="fVendorRow"><label for="fVendor" data-t="vendor">Fornitore</label><input id="fVendor" autocomplete="off"></div>
         <div class="field" id="fClientRow"><label for="fClient" data-t="client">Cliente</label><input id="fClient" autocomplete="off"></div>
-        <div class="field" id="fArtRow"><label for="fArt" data-t="artist">Chi</label><select id="fArt"><option value="D">D · Denis (Waiblingen Ink)</option><option value="G">G · Giova Tattoos</option><option value="W">W · Waiblingen Ink verso tatuatore</option></select></div>
+        <div class="field" id="fArtRow"><label for="fArt" data-t="artist">Chi</label><select id="fArt"><option value="D" data-t="artD">D · Denis (Waiblingen Ink)</option><option value="G" data-t="artG">G · Giova Tattoos</option><option value="W" data-t="artW">W · Waiblingen Ink verso tatuatore</option></select></div>
         <div class="field"><label for="fNum" data-t="number">Numero</label><input id="fNum" class="mono" autocomplete="off"></div>
         <div class="field"><label for="fDate" data-t="date">Data</label><input id="fDate" type="date" class="mono"></div>
         <div class="field"><label for="fTotal" data-t="total">Totale €</label><input id="fTotal" class="mono" inputmode="decimal" autocomplete="off"></div>
@@ -184,7 +185,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
         <div class="field" id="fDueRow"><label for="fDue" data-t="due">Scadenza</label><input id="fDue" type="date" class="mono"></div>
         <div class="field col"><label for="fNote" data-t="note">Note</label><textarea id="fNote" rows="2"></textarea></div>
       </div>
-      <div class="warn hide" id="dupBox" style="flex-direction:column;gap:8px;background:#FEF2F2;border-color:#FECACA;color:#B91C1C"><b id="dupTxt"></b><div id="dupList" class="list" style="width:100%"></div><button class="secondary" id="notDup" type="button">Non è un doppione</button></div>
+      <div class="warn hide" id="dupBox" style="flex-direction:column;gap:8px;background:#FEF2F2;border-color:#FECACA;color:#B91C1C"><b id="dupTxt"></b><div id="dupList" class="list" style="width:100%"></div><button class="secondary" id="notDup" type="button" data-t="notDup">Non è un doppione</button></div>
       <div class="warn hide" id="cardWarn"><span id="cardWarnTxt"></span></div>
       <a id="mailLink" class="link hide" target="_blank" rel="noopener" href="#" style="text-decoration:none"></a>
       <button class="primary" id="save" data-t="save">Salva nell'archivio</button>
@@ -212,8 +213,8 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
     <div class="bar"><b data-t="ask" style="font-size:22px;font-weight:800">Chiedi</b></div>
     <main style="padding-top:8px">
       <p style="margin:0;color:var(--muted);font-size:14px" data-t="askHint">Chiedi all'archivio: incassi, spese, clienti, fornitori, periodi.</p>
-      <form class="ask" id="askForm"><input id="askIn" autocomplete="off" data-ph="askPh" placeholder="es. Quanto abbiamo incassato a ottobre?" aria-label="Domanda"><button type="submit" data-t="askBtn">Chiedi</button></form>
-      <div class="chips" id="askChips"><button type="button">Quanto abbiamo incassato a ottobre?</button><button type="button">Quante spese abbiamo avuto a settembre?</button><button type="button">Tatuaggi di Giova Tattoos questo mese</button><button type="button">Abbonamenti che paghiamo ogni mese</button></div>
+      <form class="ask" id="askForm"><input id="askIn" autocomplete="off" data-ph="askPh" placeholder="es. Quanto abbiamo incassato a ottobre?" aria-label="Domanda" data-al="alAsk"><button type="submit" data-t="askBtn">Chiedi</button></form>
+      <div class="chips" id="askChips"><button type="button" data-t="q1">Quanto abbiamo incassato a ottobre?</button><button type="button" data-t="q2">Quante spese abbiamo avuto a settembre?</button><button type="button" data-t="q3">Tatuaggi di Giova Tattoos questo mese</button><button type="button" data-t="q4">Abbonamenti che paghiamo ogni mese</button></div>
       <div id="askOut" style="display:flex;flex-direction:column;gap:12px"></div>
     </main>
   </section>
@@ -251,7 +252,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
   </div></nav>
 </div>
 <div id="toast" role="status"></div>
-<script src="config.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="config.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
