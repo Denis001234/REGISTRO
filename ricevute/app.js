@@ -123,6 +123,7 @@ async function fillCard(){
   $("#fDue").value=String(d.due||"").slice(0,10);$("#fArt").value=d.art||"D";$("#fNote").value=(d.note||"")+(d.iban&&!String(d.note||"").includes(d.iban)?((d.note?" · ":"")+"IBAN "+d.iban):"");
   const ml=$("#mailLink");ml.classList.toggle("hide",!d.mailUrl);if(d.mailUrl){ml.href=d.mailUrl;ml.textContent=t("openMail")}
   $("#confirmBox").classList.toggle("hide",!(d.status==="confirm"&&isAdmin()));
+  {const imp=d.src==="import";$("#confirmBox b").textContent=imp?(lang==="de"?"Erstimport: Daten prüfen und bestätigen":"Importazione iniziale: controlla i dati e conferma"):t("confirmQ");$("#cStudio").textContent=imp?(lang==="de"?"Bestätigen ✓":"Confermato ✓"):t("studio");$("#cPriv").textContent=imp?(lang==="de"?"Privat":"Privata"):t("private")}
   $("#save").textContent=d._new?t("save"):t("update");$("#del").classList.toggle("hide",!!d._new||!isAdmin());
   $("#save").classList.toggle("hide",!isAdmin());$$("#v-card input,#v-card select,#v-card textarea").forEach(e=>e.disabled=!isAdmin());
   $("#cardTitle").textContent=d._new?t("recognized"):t("detail");
@@ -158,7 +159,7 @@ const ICON={acquisto:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none
 const ICLS={acquisto:"acq",cliente:"cli",fattura:"fat"};
 function rowHTML(d,terms){
   const title=d.type==="cliente"?(d.client||t("tCli")):(d.vendor||t(d.type==="fattura"?"tFat":"tAcq"));
-  const sub=[d.status==="confirm"?"● "+t("toConfirm"):"",d.priv?t("privTag"):"",d.src==="email"?"✉":"",fmtDate(d.date),d.number?("Nr. "+d.number):"",CATS[d.cat]?.[L()]||"",d.type==="cliente"&&d.art?d.art:""].filter(Boolean).join(" · ");
+  const sub=[d.status==="confirm"?"● "+t("toConfirm"):"",d.priv?t("privTag"):"",d.src==="email"?"✉":d.src==="import"?"⇪":"",fmtDate(d.date),d.number?("Nr. "+d.number):"",CATS[d.cat]?.[L()]||"",d.type==="cliente"&&d.art?d.art:""].filter(Boolean).join(" · ");
   return `<button class="row" data-open="${esc(d.id)}"><span class="ico ${ICLS[d.type]||"acq"}">${ICON[d.type]||ICON.acquisto}</span><span class="rmain"><b>${hl(title,terms)}</b><small>${hl(sub,terms)}</small></span><span class="amt ${d.type==="cliente"?"in":""}"${d.priv?' style="opacity:.5"':""}>${d.type==="cliente"?"+":""}${esc(eur(d.total))}</span></button>`;
 }
 document.addEventListener("click",e=>{const r=e.target.closest("[data-open]");if(r)openDoc(r.dataset.open)});
@@ -188,7 +189,15 @@ $$("#archChips button").forEach(b=>b.onclick=()=>{$$("#archChips button").forEac
 $("#archMonth").oninput=renderAll;
 $("#confBanner").onclick=()=>{catF="__conf";show("arch")};
 $("#keyBtn").onclick=async()=>{const k=$("#keyIn").value.trim();if(!k)return;try{await api("setKey",{key:k});$("#keyIn").value="";toast("✓");loadStatus()}catch(e){toast(e.message)}};
-async function loadStatus(){if(!isAdmin())return;try{const s=await api("status");$("#keyBox").classList.toggle("hide",s.gemini);$("#stLinks").innerHTML=`<a class="link" target="_blank" rel="noopener" href="${esc(s.sheet)}">Foglio archivio</a> · <a class="link" target="_blank" rel="noopener" href="${esc(s.folder)}">Cartella Drive</a>`}catch(e){}}
+const tt=(i,d)=>lang==="de"?d:i;
+$("#claudeBtn").onclick=async()=>{const k=$("#claudeIn").value.trim();if(!k)return;const b=$("#claudeBtn");b.disabled=true;try{await api("setClaudeKey",{key:k});$("#claudeIn").value="";toast(tt("Chiave Claude provata e salvata ✓","Claude-Schlüssel geprüft und gespeichert ✓"));loadStatus()}catch(e){toast(e.message)}finally{b.disabled=false}};
+$("#impBtn").onclick=async()=>{try{await api("startImport");toast(tt("Importazione avviata: lavora da sola ogni 5 minuti","Import gestartet: läuft alle 5 Minuten"));loadStatus()}catch(e){toast(e.message)}};
+async function loadStatus(){if(!isAdmin())return;try{const s=await api("status");$("#keyBox").classList.toggle("hide",s.gemini);
+$("#claudeBox").classList.toggle("hide",!!s.claude);
+$("#aiState").textContent=(s.claude?"Claude ✓":"Claude ✗")+" · "+(s.gemini?"Gemini ✓":"Gemini ✗");
+$("#impBox").classList.toggle("hide",!s.importPending&&!s.importRunning);$("#impLink").href=s.importUrl||"#";
+$("#impTxt").textContent=s.importRunning?tt("Importazione iniziale in corso: ","Erstimport läuft: ")+s.importPending+tt(" file ancora da leggere"," Dateien übrig"):tt("Importazione iniziale: ","Erstimport: ")+s.importPending+tt(" file nella cartella"," Dateien im Ordner");
+$("#impBtn").classList.toggle("hide",!!s.importRunning);$("#stLinks").innerHTML=`<a class="link" target="_blank" rel="noopener" href="${esc(s.sheet)}">Foglio archivio</a> · <a class="link" target="_blank" rel="noopener" href="${esc(s.folder)}">Cartella Drive</a>`}catch(e){}}
 $("#checkMail").onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent=t("loading");try{const j=await api("importNow");toast(t("mailDone")(j.imported||0));await load()}catch(err){toast(err.message)}finally{b.disabled=false;b.textContent=t("checkMail")}};
 
 /* ---------- ricerca che perdona gli errori ---------- */

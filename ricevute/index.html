@@ -149,6 +149,9 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
         <div class="head"><b data-t="latest">Ultimi documenti</b><button class="link" id="seeAll" data-t="seeAll">Vedi tutti</button></div>
         <div class="list" id="latest"></div>
         <div id="keyBox" class="warn hide" style="flex-direction:column;gap:8px"><b>Manca la chiave Gemini: incollala qui una volta sola (si crea gratis su aistudio.google.com/apikey con l'account info).</b><div class="ask" style="width:100%"><input id="keyIn" type="password" autocomplete="off" aria-label="Chiave Gemini" placeholder="AIza…"><button type="button" id="keyBtn">OK</button></div></div>
+        <div id="claudeBox" class="warn hide" style="flex-direction:column;gap:8px"><b id="claudeTxt">Chiave Claude: incollala qui una volta sola. Con la chiave, le foto le legge Claude e Gemini resta di riserva.</b><div class="ask" style="width:100%"><input id="claudeIn" type="password" autocomplete="off" aria-label="Chiave Claude" placeholder="sk-ant-…"><button type="button" id="claudeBtn">OK</button></div></div>
+        <div id="impBox" class="warn hide" style="flex-direction:column;gap:8px;background:#eef4ff;border-color:#c7d8ff"><b id="impTxt"></b><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><a class="link" id="impLink" target="_blank" rel="noopener">Apri cartella</a><button class="link" id="impBtn" type="button">Avvia importazione</button></div></div>
+        <div id="aiState" style="font-size:12px;text-align:center;color:var(--muted)"></div>
         <div id="stLinks" style="font-size:13px;text-align:center"></div>
         <div style="display:flex;justify-content:space-between"><button class="link" id="checkMail" data-t="checkMail">Controlla le email ora</button><button class="link" id="logout" data-t="logout" style="color:var(--muted)">Esci</button></div>
       </div>

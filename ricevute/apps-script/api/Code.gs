@@ -67,14 +67,22 @@ function doPost(e) {
       case 'del': need(); return out_(delDoc_(req.id, user.email));
       case 'read': need(); {
         const t0 = Date.now();
-        try { const f = readImage_(req.photo, req.mime); log_(user.email, 'lettura ok', '', (Date.now() - t0) + 'ms · ' + (gemini_.trace || '')); return out_({ fields: f }); }
-        catch (err) { log_(user.email, 'lettura errore', '', (Date.now() - t0) + 'ms · ' + (gemini_.trace || '') + ' · ' + err.message); throw err; }
+        try { const f = readImage_(req.photo, req.mime); log_(user.email, 'lettura ok', '', (Date.now() - t0) + 'ms · ' + (ai_.trace || '')); return out_({ fields: f }); }
+        catch (err) { log_(user.email, 'lettura errore', '', (Date.now() - t0) + 'ms · ' + (ai_.trace || '') + ' · ' + err.message); throw err; }
       }
       case 'photo': return out_(photo_(req.id));
       case 'history': return out_({ items: history_(req.id) });
       case 'ask': return out_(ask_(req.q, admin));
       case 'importNow': need(); return out_({ imported: importMail() });
       case 'setKey': need(); P().setProperty('GEMINI_KEY', String(req.key || '').trim()); log_(user.email, 'chiave gemini', '', 'aggiornata'); return out_({ ok: true });
+      case 'setClaudeKey': need(); {
+        const k = String(req.key || '').trim();
+        if (!/^sk-ant-/.test(k)) throw new Error('chiave_claude_non_valida');
+        P().setProperty('CLAUDE_KEY', k);
+        try { claude_([{ text: 'Rispondi {"ok":true}' }], true); } catch (e) { P().deleteProperty('CLAUDE_KEY'); throw new Error('chiave_claude_rifiutata: ' + e.message.slice(0, 120)); }
+        log_(user.email, 'chiave claude', '', 'aggiornata e provata'); return out_({ ok: true });
+      }
+      case 'startImport': need(); return out_(startImport_(user.email));
       case 'status': need(); return out_(status_());
       default: return out_({ error: 'azione_sconosciuta' });
     }
@@ -102,7 +110,9 @@ function login_(g) {
   return { token: body + '.' + sig, email: i.email, role };
 }
 function status_() {
-  return { gemini: !!prop('GEMINI_KEY'), triggers: ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction()), sheet: 'https://docs.google.com/spreadsheets/d/' + prop('SHEET_ID'), folder: 'https://drive.google.com/drive/folders/' + prop('FOLDER_ID'), importFrom: prop('IMPORT_FROM') };
+  const imp = importFolder_();
+  let pending = 0; const it = imp.getFiles(); while (it.hasNext() && pending < 999) { it.next(); pending++; }
+  return { gemini: !!prop('GEMINI_KEY'), claude: !!prop('CLAUDE_KEY'), importUrl: imp.getUrl(), importPending: pending, importRunning: ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'importFolder'), triggers: ScriptApp.getProjectTriggers().map(t => t.getHandlerFunction()), sheet: 'https://docs.google.com/spreadsheets/d/' + prop('SHEET_ID'), folder: 'https://drive.google.com/drive/folders/' + prop('FOLDER_ID'), importFrom: prop('IMPORT_FROM') };
 }
 function auth_(token) {
   if (!token || token.indexOf('.') < 0) throw new Error('login');
@@ -186,7 +196,43 @@ function photo_(id) {
 }
 
 /* ================= Gemini ================= */
-const GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+const CLAUDE_MODEL = 'claude-haiku-5-5';
+/* Prima Claude (API a pagamento, dati non usati per addestrare), poi Gemini come riserva; se manca la chiave Claude, solo Gemini. */
+function ai_(parts, json) {
+  const trace = [];
+  const order = prop('CLAUDE_KEY') ? ['claude', 'gemini'] : ['gemini'];
+  let lastErr;
+  for (const who of order) {
+    const t0 = Date.now();
+    try {
+      const r = who === 'claude' ? claude_(parts, json) : gemini_(parts, json);
+      trace.push(who === 'claude' ? CLAUDE_MODEL + ' ok ' + (Date.now() - t0) + 'ms' : (gemini_.trace || 'gemini ok'));
+      ai_.trace = trace.join(', ');
+      return r;
+    } catch (e) { lastErr = e; trace.push(who + ' errore ' + (Date.now() - t0) + 'ms ' + String(e.message).slice(0, 120)); }
+  }
+  ai_.trace = trace.join(', ');
+  throw lastErr;
+}
+function claude_(parts, json) {
+  const content = [];
+  parts.forEach(p => {
+    if (p.inline_data) {
+      const m = p.inline_data.mime_type;
+      content.unshift(/pdf/.test(m) ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: p.inline_data.data } }
+                                    : { type: 'image', source: { type: 'base64', media_type: m, data: p.inline_data.data } });
+    } else if (p.text) content.push({ type: 'text', text: p.text + (json ? '\nRispondi solo con il JSON, senza altro testo.' : '') });
+  });
+  const r = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-api-key': prop('CLAUDE_KEY'), 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({ model: prop('CLAUDE_MODEL') || CLAUDE_MODEL, max_tokens: 2000, messages: [{ role: 'user', content }] }) });
+  if (r.getResponseCode() !== 200) throw new Error('claude ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 200));
+  const t = (JSON.parse(r.getContentText()).content || []).filter(x => x.type === 'text').map(x => x.text).join('');
+  if (!json) return t;
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  return JSON.parse(t.slice(a, b + 1));
+}
 function gemini_(parts, json) {
   if (!prop('GEMINI_KEY')) throw new Error('manca_chiave_gemini');
   const req = (model, think) => {
@@ -220,7 +266,7 @@ TIPI
 CAMPI {"type":"cliente|fattura|acquisto","client":string|null,"vendor":string|null,"date":"YYYY-MM-DD"|null,"number":string|null,"total":number|null,"rate":19|7|0|null,"art":"D"|"G"|"W"|null,"note":string|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"unsure":[campi incerti]}
 Abbonamenti e servizi digitali (Google, Apple, Wix, Kalender.digital, Adobe) -> "software". Non inventare: se non leggibile metti null.`;
 function readImage_(b64, mime) {
-  return gemini_([{ text: RECEIPT_PROMPT }, { inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }], true);
+  return ai_([{ text: RECEIPT_PROMPT + (readImage_.extra || '') }, { inline_data: { mime_type: mime || 'image/jpeg', data: b64 } }], true);
 }
 
 /* ================= assistente ================= */
@@ -234,7 +280,7 @@ ${rows.join('\n')}
 Domanda: ${q}
 Rispondi SOLO con JSON {"answer":"risposta breve in italiano, senza calcoli lunghi","ids":["id di TUTTI i documenti che compongono la risposta"],"kind":"incassi|spese|misto|altro"}.
 Le spese private non contano. Se la domanda non riguarda l'archivio, rispondi gentilmente che puoi aiutare solo con ricevute e fatture.`;
-  const r = gemini_([{ text: prompt }], true);
+  const r = ai_([{ text: prompt }], true);
   const set = {}; docs.forEach(d => set[d.id] = d);
   const ids = (r.ids || []).filter(id => set[id]);
   log_('assistente', 'domanda', '', q);
@@ -298,7 +344,7 @@ Decidi se è la PROVA di una SPESA dello studio o di una fattura da pagare (scon
 Rispondi SOLO con JSON {"expense":true|false,"type":"acquisto|fattura","vendor":string,"date":"YYYY-MM-DD","number":string|null,"total":number|null,"rate":19|7|0|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"note":"breve descrizione"}.
 Abbonamenti digitali -> "software". Se non c'è un importo chiaro, expense=false.` }];
   if (raw.att) parts.push({ inline_data: { mime_type: raw.att.mime, data: raw.att.data } });
-  const r = gemini_(parts, true);
+  const r = ai_(parts, true);
   if (!r.expense || r.total == null) return false;
   const doc = { type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
   return storeMailDoc_(doc, String(raw.msgId), String(raw.mailUrl || ''), raw.att ? { mime: raw.att.mime, bytes: Utilities.base64Decode(raw.att.data), name: raw.att.name } : null, status, owner);
@@ -323,4 +369,66 @@ function dailyBackup() {
   const limit = Date.now() - 1000 * 60 * 60 * 24 * 60;
   const it = folder.getFiles(); while (it.hasNext()) { const f = it.next(); if (f.getDateCreated().getTime() < limit) f.setTrashed(true); }
   log_('backup', 'giornaliero', '', day);
+}
+
+/* ================= importazione iniziale da cartella Drive ================= */
+function importFolder_() {
+  let id = prop('IMPORT_ID');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) {} }
+  const f = DriveApp.getFolderById(prop('FOLDER_ID')).createFolder('Importazione iniziale');
+  P().setProperty('IMPORT_ID', f.getId());
+  return f;
+}
+function sub_(parent, name) { const it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : parent.createFolder(name); }
+function startImport_(who) {
+  if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'importFolder'))
+    { P().deleteProperty('IMPORT_RUNS'); ScriptApp.newTrigger('importFolder').timeBased().everyMinutes(5).create(); }
+  log_(who, 'importazione avviata', '', '');
+  return { started: true };
+}
+function stopImport_() { ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'importFolder').forEach(t => ScriptApp.deleteTrigger(t)); }
+function jpegOf_(file) {
+  const tok = ScriptApp.getOAuthToken();
+  const meta = JSON.parse(UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + file.getId() + '?fields=thumbnailLink', { headers: { Authorization: 'Bearer ' + tok }, muteHttpExceptions: true }).getContentText() || '{}');
+  if (!meta.thumbnailLink) return null;
+  const r = UrlFetchApp.fetch(meta.thumbnailLink.replace(/=s\d+$/, '=s1800'), { headers: { Authorization: 'Bearer ' + tok }, muteHttpExceptions: true });
+  return r.getResponseCode() === 200 ? r.getBlob().setContentType('image/jpeg') : null;
+}
+function importFolder() {
+  const runs = Number(prop('IMPORT_RUNS') || 0) + 1; P().setProperty('IMPORT_RUNS', String(runs));
+  if (runs > 60) { stopImport_(); log_('importazione', 'fermata', '', 'limite di 60 giri raggiunto'); return; }
+  const t0 = Date.now(), folder = importFolder_();
+  const done = sub_(folder, 'Originali'), extr = sub_(folder, 'Estratti conto'), bad = sub_(folder, 'Non letti');
+  const fails = JSON.parse(prop('IMPORT_FAILS') || '{}');
+  const it = folder.getFiles(); let n = 0, left = 0;
+  while (it.hasNext()) {
+    const f = it.next();
+    if (Date.now() - t0 > 4.5 * 60 * 1000) { left++; continue; }
+    const mime = f.getMimeType(), name = f.getName();
+    try {
+      if (/csv|spreadsheet|excel|text\/plain|xml/.test(mime) || /\.(csv|xlsx?|xml|mt940|sta)$/i.test(name)) { f.moveTo(extr); log_('importazione', 'estratto conto', '', name); continue; }
+      let blob = f.getBlob(), m = mime;
+      if (/^image\//.test(mime)) { const j = jpegOf_(f); if (j) { blob = j; m = 'image/jpeg'; } else if (!/jpe?g|png|webp/.test(mime) || f.getSize() > 3.5e6) { left++; continue; } }
+      else if (!/pdf/.test(mime)) { f.moveTo(bad); log_('importazione', 'formato non letto', '', name + ' ' + mime); continue; }
+      readImage_.extra = '\nSe il documento è un estratto conto bancario (Sparkasse) o un resoconto/elenco di transazioni SumUp o PayPal, rispondi solo {"type":"estratto"}.';
+      let r; try { r = readImage_(Utilities.base64Encode(blob.getBytes()), m); } finally { readImage_.extra = ''; }
+      if (r.type === 'estratto') { f.moveTo(extr); log_('importazione', 'estratto conto', '', name); continue; }
+      const photo = m === mime ? f : DriveApp.getFolderById(prop('PHOTO_ID')).createFile(blob.setName(name.replace(/\.[^.]+$/, '') + '.jpg'));
+      const c = clean_({ type: r.type, art: r.art, client: r.client, vendor: r.vendor, number: r.number ? String(r.number).replace(/^\*/, '') : '', date: r.date, total: r.total, rate: r.rate == null ? 19 : r.rate, cat: r.category || (r.type === 'cliente' ? 'einnahme' : 'sonstiges'), due: r.due, iban: r.iban, note: [r.note, (r.unsure || []).length ? 'incerto: ' + r.unsure.join(', ') : ''].filter(Boolean).join(' · '), status: 'confirm' });
+      const now = new Date().toISOString();
+      const rec = Object.assign({ id: Utilities.getUuid(), src: 'import', msgId: 'drive:' + f.getId(), mailUrl: f.getUrl(), owner: 'import', photoId: photo.getId(), mime: m, createdAt: now, createdBy: 'importazione iniziale', updatedAt: now, updatedBy: 'importazione iniziale' }, c);
+      const l2 = LockService.getScriptLock(); l2.waitLock(20000);
+      try { const sh = sheet_(); const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0]; sh.appendRow(h.map(k => rec[k] === undefined ? '' : rec[k])); } finally { l2.releaseLock(); }
+      if (photo === f) f.moveTo(DriveApp.getFolderById(prop('PHOTO_ID'))); else f.moveTo(done);
+      log_('importazione', 'importato', rec.id, [rec.type, rec.client || rec.vendor, rec.number, rec.total, ai_.trace].filter(Boolean).join(' · '));
+      n++;
+    } catch (e) {
+      fails[f.getId()] = (fails[f.getId()] || 0) + 1;
+      log_('importazione', 'errore', '', name + ' · ' + String(e.message).slice(0, 200));
+      if (fails[f.getId()] >= 2) f.moveTo(bad); else left++;
+    }
+  }
+  P().setProperty('IMPORT_FAILS', JSON.stringify(fails));
+  if (!left) { stopImport_(); P().deleteProperty('IMPORT_RUNS'); log_('importazione', 'finita', '', n + ' documenti in questo giro'); }
+  return { imported: n, left };
 }
