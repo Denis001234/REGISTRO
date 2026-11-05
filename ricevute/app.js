@@ -157,6 +157,14 @@ function openDoc(id){const d=docs.find(x=>x.id===id);if(!d)return;editing=Object
 /* ---------- liste ---------- */
 const ICON={acquisto:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.8" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"></path></svg>',cliente:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',fattura:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0057FF" stroke-width="1.8" aria-hidden="true"><path d="M4 4h16v16H4z"></path><path d="M4 9h16"></path></svg>'};
 const ICLS={acquisto:"acq",cliente:"cli",fattura:"fat"};
+function totHTML(list){
+  if(!list.length)return "";let inn=0,out=0,priv=0;list.forEach(d=>{if(d.priv){priv++;return}if(d.type==="cliente")inn+=+d.total||0;else out+=+d.total||0});
+  const de=lang==="de",parts=[];
+  if(inn)parts.push(`<span>${de?"Einnahmen":"Entrate"}</span><b class="in">+${esc(eur(inn))}</b>`);
+  if(out)parts.push(`<span>${de?"Ausgaben":"Uscite"}</span><b>${esc(eur(out))}</b>`);
+  if(inn&&out)parts.push(`<span>${de?"Saldo":"Saldo"}</span><b class="${inn-out>=0?"in":""}">${esc(eur(inn-out))}</b>`);
+  return `<div class="tot"><div class="totn">${de?"Summe":"Totale"} · ${list.length} ${de?"Belege":"documenti"}${priv?` · ${priv} ${de?"privat, nicht gezählt":"privati non contati"}`:""}</div>${parts.map(x=>`<div class="totr">${x}</div>`).join("")}</div>`;
+}
 function rowHTML(d,terms){
   const title=d.type==="cliente"?(d.client||t("tCli")):(d.vendor||t(d.type==="fattura"?"tFat":"tAcq"));
   const sub=[d.status==="confirm"?"● "+t("toConfirm"):"",d.priv?t("privTag"):"",d.src==="email"?"✉":d.src==="import"?"⇪":"",fmtDate(d.date),d.number?("Nr. "+d.number):"",CATS[d.cat]?.[L()]||"",d.type==="cliente"&&d.art?d.art:""].filter(Boolean).join(" · ");
@@ -175,12 +183,12 @@ function renderAll(){
   $("#sIn").textContent=eur(inn);$("#sOut").textContent=eur(out);
   $("#confBanner").classList.toggle("hide",!conf||!isAdmin());$("#confN").textContent=conf;
   const sorted=[...docs].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))||String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
-  $("#latest").innerHTML=sorted.slice(0,6).map(d=>rowHTML(d,[])).join("")||`<div class="empty">${esc(t("empty"))}</div>`;
+  $("#latest").innerHTML=sorted.slice(0,6).map(d=>rowHTML(d,[])).join("")+totHTML(sorted.slice(0,6))||`<div class="empty">${esc(t("empty"))}</div>`;
   const f=$("#archChips .on")?.dataset.f||"all",am=$("#archMonth").value,rec=recurringVendors();
   const used=[...new Set(docs.map(d=>d.cat).filter(Boolean))];
   $("#catChips").innerHTML=[`<button data-c="" class="${catF===""?"on":""}">${esc(t("allCats"))}</button>`,conf?`<button data-c="__conf" class="${catF==="__conf"?"on":""}">${esc(t("toConfirm"))} (${conf})</button>`:"",rec.size?`<button data-c="__rec" class="${catF==="__rec"?"on":""}">${esc(t("recurring"))}</button>`:""].concat(Object.keys(CATS).filter(k=>used.includes(k)).map(k=>`<button data-c="${k}" class="${catF===k?"on":""}">${esc(CATS[k][L()])}</button>`)).join("");
   const arch=sorted.filter(d=>(f==="all"||d.type===f)&&(!am||String(d.date||"").startsWith(am))&&(!catF||(catF==="__rec"?rec.has(vkey(d)):catF==="__conf"?d.status==="confirm":d.cat===catF)));
-  $("#archList").innerHTML=arch.map(d=>rowHTML(d,[])).join("")||`<div class="empty">${esc(docs.length?t("noRes"):t("empty"))}</div>`;
+  $("#archList").innerHTML=arch.map(d=>rowHTML(d,[])).join("")+totHTML(arch)||`<div class="empty">${esc(docs.length?t("noRes"):t("empty"))}</div>`;
   runSearch();
   if(!$("#v-exp").classList.contains("hide"))renderExp();
 }
@@ -209,7 +217,7 @@ function runSearch(){
   const terms=q.split(/\s+/).filter(Boolean),res=[];
   for(const d of docs){const h=hay(d),words=h.split(/[^a-z0-9,]+/).filter(Boolean);let s=0,ok=true;for(const tm of terms){const x=termHits(tm,words,h);if(!x){ok=false;break}s+=x}if(ok)res.push([s,d])}
   res.sort((a,b)=>b[0]-a[0]||String(b[1].date||"").localeCompare(String(a[1].date||"")));
-  $("#resTitle").textContent=t("results")(res.length);$("#resList").innerHTML=res.map(([,d])=>rowHTML(d,terms)).join("")||`<div class="empty">${esc(t("noRes"))}</div>`;
+  $("#resTitle").textContent=t("results")(res.length);$("#resList").innerHTML=res.map(([,d])=>rowHTML(d,terms)).join("")+totHTML(res.map(([,d])=>d))||`<div class="empty">${esc(t("noRes"))}</div>`;
 }
 function hl(text,terms){let s=esc(text);for(const tm of terms){if(tm.length<2)continue;s=s.replace(new RegExp("("+tm.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")","ig"),"<mark>$1</mark>")}return s}
 $("#q").oninput=runSearch;$("#clearQ").onclick=()=>{$("#q").value="";runSearch()};
@@ -224,7 +232,7 @@ $("#askForm").onsubmit=async e=>{
     let inn=0,out=0;list.forEach(d=>{if(!counts(d))return;if(d.type==="cliente")inn+=+d.total||0;else out+=+d.total||0});
     lastAsk={q,answer:j.answer,list,inn:r2(inn),out:r2(out)};
     box.innerHTML=`<div class="list" style="padding:14px;display:flex;flex-direction:column;gap:10px"><span style="font-size:13px;color:var(--muted)">${esc(q)}</span><b style="font-size:16px;line-height:1.4">${esc(j.answer)}</b><div class="grid2">${inn?`<div class="stat"><span>${esc(t("sumIn"))}</span><span class="mono" style="color:var(--green)">${esc(eur(inn))}</span></div>`:""}${out?`<div class="stat"><span>${esc(t("sumOut"))}</span><span class="mono">${esc(eur(out))}</span></div>`:""}</div><span style="font-size:12px;color:var(--muted)">${list.length} ${esc(t("docsN"))}</span></div>`+
-      (list.length?`<div class="list">${list.map(d=>rowHTML(d,[])).join("")}</div><div class="grid2"><button class="secondary" id="askPdf">PDF</button><button class="secondary" id="askXls">Excel</button></div>`:"");
+      (list.length?`<div class="list">${list.map(d=>rowHTML(d,[])).join("")}${totHTML(list)}</div><div class="grid2"><button class="secondary" id="askPdf">PDF</button><button class="secondary" id="askXls">Excel</button></div>`:"");
     if(list.length){$("#askPdf").onclick=()=>exportPdf(list,"Domanda: "+q+"\n"+j.answer,"Waiblingen-Ink_Risposta.pdf",false);$("#askXls").onclick=()=>exportXls(list,"Waiblingen-Ink_Risposta.xlsx",null)}
   }catch(err){box.innerHTML=`<div class="warn">${esc(err.message)}</div>`}
 };
