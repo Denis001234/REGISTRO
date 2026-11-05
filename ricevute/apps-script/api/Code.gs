@@ -171,7 +171,8 @@ function saveDoc_(doc, photo, mime, who) {
     const row = h.map(k => rec[k] === undefined ? '' : rec[k]);
     if (rowIdx > 0) sh.getRange(rowIdx + 1, 1, 1, h.length).setValues([row]); else sh.appendRow(row);
     if (before) {
-      const ch = Object.keys(c).filter(k => String(before[k] === undefined ? '' : before[k]) !== String(c[k] === undefined ? '' : c[k])).map(k => k + ': ' + before[k] + ' -> ' + c[k]);
+      const f = x => x === undefined || x === null ? '' : x instanceof Date ? Utilities.formatDate(x, 'Europe/Berlin', 'yyyy-MM-dd') : String(x);
+      const ch = Object.keys(c).filter(k => f(before[k]) !== f(c[k])).map(k => k + ': ' + f(before[k]) + ' -> ' + f(c[k]));
       if (ch.length) log_(who, 'modifica', rec.id, ch.join(' | '));
     } else log_(who, rec.src === 'foto' ? 'caricato' : 'nuovo', rec.id, [rec.type, rec.client || rec.vendor, rec.number, rec.total].filter(Boolean).join(' · '));
     return rec;
@@ -403,7 +404,15 @@ function jpegOf_(file) {
 function importFolder() {
   const runs = Number(prop('IMPORT_RUNS') || 0) + 1; P().setProperty('IMPORT_RUNS', String(runs));
   if (runs > 60) { stopImport_(); log_('importazione', 'fermata', '', 'limite di 60 giri raggiunto'); return; }
+  const busy = Number(prop('IMPORT_BUSY') || 0);
+  if (busy && Date.now() - busy < 6 * 60 * 1000) { log_('importazione', 'saltato', '', 'giro precedente ancora in corso'); return; }
+  P().setProperty('IMPORT_BUSY', String(Date.now()));
+  try { return importRun_(); } finally { P().deleteProperty('IMPORT_BUSY'); }
+}
+function importRun_() {
   const t0 = Date.now(), folder = importFolder_();
+  const shv = sheet_().getDataRange().getValues(), mi = shv[0].indexOf('msgId'), seen = {};
+  for (let i = 1; i < shv.length; i++) if (shv[i][mi]) seen[shv[i][mi]] = true;
   const done = sub_(folder, 'Originali'), extr = sub_(folder, 'Estratti conto'), bad = sub_(folder, 'Non letti');
   const fails = JSON.parse(prop('IMPORT_FAILS') || '{}');
   const it = folder.getFiles(); let n = 0, left = 0;
@@ -411,6 +420,7 @@ function importFolder() {
     const f = it.next();
     if (Date.now() - t0 > 4.5 * 60 * 1000) { left++; continue; }
     const mime = f.getMimeType(), name = f.getName();
+    if (seen['drive:' + f.getId()]) { f.moveTo(done); log_('importazione', 'già importato', '', name); continue; }
     try {
       if (/csv|spreadsheet|excel|text\/plain|xml/.test(mime) || /\.(csv|xlsx?|xml|mt940|sta)$/i.test(name)) { f.moveTo(extr); log_('importazione', 'estratto conto', '', name); continue; }
       let blob = f.getBlob(), m = mime;
