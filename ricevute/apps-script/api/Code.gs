@@ -352,6 +352,8 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
   const c = clean_(Object.assign({}, doc, { status }));
   const now = new Date().toISOString();
   const rec = Object.assign({ id: Utilities.getUuid(), src: 'email', msgId, mailUrl, owner, createdAt: now, createdBy: 'email', updatedAt: now, updatedBy: 'email' }, c);
+  rec.refs = JSON.stringify((doc.refs || []).map(x => ({ t: String(x && x.t || 'altro').slice(0, 12), v: String(x && x.v || x || '').slice(0, 60) })).filter(x => x.v));
+  ensureCols_();
   if (att) { const f = DriveApp.getFolderById(prop('MAIL_ID')).createFile(Utilities.newBlob(att.bytes, att.mime, (rec.date || '') + '_' + att.name)); rec.photoId = f.getId(); rec.mime = att.mime; }
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -361,6 +363,7 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
     fileDoc_(rec);
     log_('email (' + owner + ')', 'importato', rec.id, [rec.vendor, rec.number, rec.total].filter(Boolean).join(' · '));
   } finally { lock.releaseLock(); }
+  try { const r = dedupe_(false, rec.id); if (r.merged.length) log_('doppioni', 'unito all\'import', rec.id, JSON.stringify(r.merged[0]).slice(0, 500)); } catch (e) { log_('doppioni', 'errore', rec.id, String(e.message).slice(0, 200)); }
   return true;
 }
 function parseMail_(raw, status, owner) {
@@ -370,12 +373,12 @@ Testo:
 ${String(raw.body || '').slice(0, 6000)}
 
 Decidi se è la PROVA di una SPESA dello studio o di una fattura di un fornitore (scontrino, fattura, ricevuta di pagamento, addebito). NON sono spese: newsletter, pubblicità, conferme di ordine senza importo, incassi ricevuti, resoconti di vendite, avvisi di sicurezza.
-Rispondi SOLO con JSON {"expense":true|false,"type":"acquisto|fattura","vendor":string,"date":"YYYY-MM-DD","number":string|null,"total":number|null,"rate":19|7|0|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"note":"breve descrizione"}.
+Rispondi SOLO con JSON {"expense":true|false,"type":"acquisto|fattura","vendor":string,"date":"YYYY-MM-DD","number":string|null,"total":number|null,"rate":19|7|0|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"note":"breve descrizione","refs":[{"t":"fattura|ordine|transazione|altro","v":"ogni numero di riferimento che trovi: numero fattura, numero ordine, ID transazione PayPal, riferimento carta o banca, numero cliente escluso"}]}.
 Abbonamenti digitali -> "software". Se non c'è un importo chiaro, expense=false.` }];
   if (raw.att) parts.push({ inline_data: { mime_type: raw.att.mime, data: raw.att.data } });
   const r = ai_(parts, true);
   if (!r.expense || r.total == null) return false;
-  const doc = { type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
+  const doc = { refs: Array.isArray(r.refs) ? r.refs.slice(0, 10) : [], type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
   return storeMailDoc_(doc, String(raw.msgId), String(raw.mailUrl || ''), raw.att ? { mime: raw.att.mime, bytes: Utilities.base64Decode(raw.att.data), name: raw.att.name } : null, status, owner);
 }
 function collect_(req) {
@@ -654,4 +657,96 @@ function lines_(ids) {
     } catch (e) { missing.push(id); log_('fai per me', 'righe errore', id, String(e.message).slice(0, 200)); }
   });
   return { lines: out, missing };
+}
+
+/* ================= doppioni: stessa spesa arrivata da fornitore, PayPal, carta =================
+ * Livello 1: un numero di riferimento in comune + stesso importo + date entro 10 giorni = stessa spesa.
+ * Livello 2: nessun numero in comune ma stesso importo, date entro 3 giorni e stesso fornitore (Anthropic = ANTHROPIC* CLAUDE SUB = Anthropic Ireland).
+ *            Non si uniscono se sono due documenti dello stesso tipo con numeri diversi (es. due ordini eBay veri da 4,99 lo stesso giorno).
+ * Si tiene la copia migliore (confermata a mano, con PDF o foto, fattura del fornitore), le altre vanno in Stornati e si possono annullare. */
+const DUP_STOP = ['gmbh', 'ltd', 'limited', 'ireland', 'inc', 'kg', 'sub', 'com', 'www', 'paypal', 'europe', 'sarl', 'the', 'und', 'and', 'online', 'shop', 'store', 'services', 'service', 'payment', 'payments', 'zahlung', 'pte', 'llc', 'germany', 'deutschland', 'gbr', 'mbh', 'co'];
+function ensureCols_() {
+  const sh = sheet_(), h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  ['refs', 'altre'].forEach(k => { if (h.indexOf(k) < 0) { sh.getRange(1, sh.getLastColumn() + 1).setValue(k); } });
+}
+function vtok_(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length >= 3 && DUP_STOP.indexOf(w) < 0 && !/^\d+$/.test(w)); }
+function refsOf_(d) {
+  const out = {}; let r = [];
+  try { r = JSON.parse(d.refs || '[]'); } catch (e) {}
+  const add = (raw, t) => { const v = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if (v.length >= 6 && (v.match(/\d/g) || []).length >= 4 && !/^(19|20)\d{6}$/.test(v) && !out[v]) out[v] = t; };
+  r.forEach(x => add(x && x.v, x && x.t || 'altro'));
+  add(d.number, 'numero');
+  (String([d.vendor, d.note].join(' ')).toUpperCase().match(/[A-Z0-9][A-Z0-9\-\/\.]{5,}[A-Z0-9]/g) || []).forEach(t => add(t, 'altro'));
+  return out;
+}
+function dayDiff_(a, b) { return Math.abs(new Date(String(a).slice(0, 10) + 'T12:00:00Z') - new Date(String(b).slice(0, 10) + 'T12:00:00Z')) / 864e5; }
+function kind_(d) { const v = String(d.vendor || ''); return /paypal/i.test(v) ? 'paypal' : /\*/.test(v) ? 'carta' : 'fornitore'; }
+function score_(d) { return (d.status === 'ok' && d.src !== 'email' ? 8 : 0) + (d.status === 'ok' ? 4 : 0) + (d.photoId ? 3 : 0) + (kind_(d) === 'fornitore' ? 2 : kind_(d) === 'paypal' ? 1 : 0) + (d.rate !== '' && d.rate != null ? 1 : 0); }
+function dupPair_(a, b) {
+  if (Math.abs((+a.total || 0) - (+b.total || 0)) > 0.005 || !(+a.total)) return null;
+  const dd = dayDiff_(a.date, b.date);
+  if (dd > 10) return null;
+  const ra = refsOf_(a), rb = refsOf_(b), shared = Object.keys(ra).filter(k => rb[k]);
+  if (shared.length) return 'numero ' + shared[0];
+  if (dd > 3) return null;
+  const ta = vtok_(a.vendor), tb = vtok_(b.vendor), same = ta.filter(w => tb.indexOf(w) >= 0);
+  if (!same.length) return null;
+  if (Object.keys(ra).length && Object.keys(rb).length && kind_(a) === kind_(b)) return null;
+  return 'stesso fornitore (' + same[0] + '), importo e data';
+}
+function dedupe_(dry, onlyId) {
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    ensureCols_();
+    const sh = sheet_(), v = sh.getDataRange().getValues(), h = v[0], idc = h.indexOf('id');
+    const docs = [];
+    for (let i = 1; i < v.length; i++) { const d = snap_(h, v[i]); d._row = i; if (d.deleted === true || String(d.deleted).toUpperCase() === 'TRUE' || d.type === 'cliente' || !d.date) continue; docs.push(d); }
+    const par = {}, why = {}; const f = x => par[x] === x ? x : (par[x] = f(par[x]));
+    docs.forEach(d => par[d.id] = d.id);
+    for (let i = 0; i < docs.length; i++) for (let j = i + 1; j < docs.length; j++) {
+      const a = docs[i], b = docs[j];
+      if (onlyId && a.id !== onlyId && b.id !== onlyId) continue;
+      if (String(a.priv).toUpperCase() === 'TRUE' !== (String(b.priv).toUpperCase() === 'TRUE')) continue;
+      const w = dupPair_(a, b); if (!w) continue;
+      par[f(a.id)] = f(b.id); why[a.id + '|' + b.id] = w;
+    }
+    const groups = {}; docs.forEach(d => { const r = f(d.id); (groups[r] = groups[r] || []).push(d); });
+    const merged = [], who = 'doppioni@sistema', now = new Date().toISOString();
+    Object.keys(groups).forEach(k => {
+      const g = groups[k]; if (g.length < 2) return;
+      g.sort((x, y) => score_(y) - score_(x) || String(x.createdAt).localeCompare(String(y.createdAt)));
+      const keep = g[0], rest = g.slice(1);
+      const reason = rest.map(r => why[keep.id + '|' + r.id] || why[r.id + '|' + keep.id] || 'stessa spesa (gruppo)');
+      merged.push({ tieni: [keep.date, keep.vendor, keep.total].join(' · '), storna: rest.map((r, i) => [r.date, r.vendor, r.total, reason[i]].join(' · ')) });
+      if (dry) return;
+      const before = h.map(c => v[keep._row][h.indexOf(c)]), krow = v[keep._row].slice();
+      const set = (c, x) => { const i = h.indexOf(c); if (i >= 0) krow[i] = x; };
+      let altre = []; try { altre = JSON.parse(keep.altre || '[]'); } catch (e) {}
+      let krefs = []; try { krefs = JSON.parse(keep.refs || '[]'); } catch (e) {}
+      rest.forEach(r => {
+        if (!keep.number && r.number) { set('number', r.number); keep.number = r.number; }
+        if ((keep.rate === '' || keep.rate == null) && r.rate !== '' && r.rate != null) { set('rate', r.rate); keep.rate = r.rate; }
+        if (!keep.photoId && r.photoId) { set('photoId', r.photoId); set('mime', r.mime); keep.photoId = r.photoId; }
+        if (r.mailUrl) altre.push(r.mailUrl);
+        try { krefs = krefs.concat(JSON.parse(r.refs || '[]')); } catch (e) {}
+        if (r.number) krefs.push({ t: 'numero', v: String(r.number) });
+        const rb = v[r._row].slice(), ra = rb.slice();
+        ra[h.indexOf('deleted')] = true; ra[h.indexOf('deletedAt')] = now; ra[h.indexOf('deletedBy')] = who;
+        ra[h.indexOf('note')] = String(('doppione di ' + [keep.date, keep.vendor, keep.total + ' €'].join(' · ') + ' · ' + (r.note || '')).slice(0, 500));
+        if (r.photoId && r.photoId === keep.photoId) { ra[h.indexOf('photoId')] = ''; }
+        sh.getRange(r._row + 1, 1, 1, h.length).setValues([ra]);
+        record_(who, r.id, snap_(h, rb), snap_(h, ra), 'doppione stornato · ' + [r.vendor, r.total + ' €'].join(' · '));
+        log_(who, 'doppione stornato', r.id, 'tenuto ' + keep.id + ' · ' + (why[keep.id + '|' + r.id] || why[r.id + '|' + keep.id] || 'stessa spesa'));
+        fileDoc_(snap_(h, ra));
+      });
+      set('altre', JSON.stringify(altre.filter((x, i, a) => a.indexOf(x) === i).slice(0, 10)));
+      set('refs', JSON.stringify(krefs.slice(0, 20)));
+      set('updatedAt', now); set('updatedBy', who);
+      sh.getRange(keep._row + 1, 1, 1, h.length).setValues([krow]);
+      record_(who, keep.id, snap_(h, before), snap_(h, krow), 'unito con ' + rest.length + ' doppioni · ' + [keep.vendor, keep.total + ' €'].join(' · '));
+      fileDoc_(snap_(h, krow));
+    });
+    if (!dry && merged.length) log_(who, 'pulizia doppioni', '', merged.length + ' spese unite');
+    return { merged };
+  } finally { lock.releaseLock(); }
 }
