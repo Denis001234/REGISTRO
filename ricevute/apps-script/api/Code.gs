@@ -332,7 +332,7 @@ function importMail() {
       if (!MAIL_HINT.test(subj + ' ' + body.slice(0, 1500)) && !atts.length) continue;
       if (/nachrichten zur freigabe|resoconto (quotidiano|mensile) versamenti|zahlungseingang|auszahlung/i.test(subj)) continue;
       const mailUrl = 'https://mail.google.com/mail/?authuser=' + Session.getEffectiveUser().getEmail() + '#all/' + m.getId();
-      const raw = { from: m.getFrom(), date: Utilities.formatDate(m.getDate(), 'Europe/Berlin', 'yyyy-MM-dd'), subject: subj, body, msgId: m.getId(), mailUrl,
+      const raw = { from: m.getFrom(), to: m.getTo(), date: Utilities.formatDate(m.getDate(), 'Europe/Berlin', 'yyyy-MM-dd'), subject: subj, body, msgId: m.getId(), mailUrl,
         att: atts[0] ? { mime: atts[0].getContentType(), data: Utilities.base64Encode(atts[0].getBytes()), name: atts[0].getName() } : null };
       if (collector) {
         const res = UrlFetchApp.fetch(MAIN_URL, { method: 'post', contentType: 'text/plain', muteHttpExceptions: true, followRedirects: true,
@@ -370,6 +370,7 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
   return true;
 }
 function parseMail_(raw, status, owner) {
+  if (privMail_(raw, owner)) return false;  // PayPal privato o carta privata: non entra nell'app
   const parts = [{ text: `Email ricevuta da ${raw.from} il ${raw.date}.
 Oggetto: ${raw.subject}
 Testo:
@@ -377,11 +378,14 @@ ${String(raw.body || '').slice(0, 6000)}
 
 Decidi se è la PROVA di una SPESA dello studio o di una fattura di un fornitore (scontrino, fattura, ricevuta di pagamento, addebito). NON sono spese: newsletter, pubblicità, conferme di ordine senza importo, incassi ricevuti, resoconti di vendite, avvisi di sicurezza.
 Rispondi SOLO con JSON {"expense":true|false,"type":"acquisto|fattura","vendor":string,"date":"YYYY-MM-DD","number":string|null,"total":number|null,"rate":19|7|0|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"note":"breve descrizione","refs":[{"t":"fattura|ordine|transazione|altro","v":"ogni numero di riferimento che trovi: numero fattura, numero ordine, ID transazione PayPal, riferimento carta o banca, numero cliente escluso"}]}.
+Aggiungi "card": le ultime 4 cifre della carta con cui è stato pagato, se sono scritte (es. "Visa •••• 1234" -> "1234"), altrimenti null.
 Abbonamenti digitali -> "software". Se non c'è un importo chiaro, expense=false.
 ${usoPrompt_()}` }];
   if (raw.att) parts.push({ inline_data: { mime_type: raw.att.mime, data: raw.att.data } });
   const r = ai_(parts, true);
   if (!r.expense || r.total == null) return false;
+  const c4 = String(r.card || '').replace(/\D/g, '').slice(-4);
+  if (c4 && privCards_().indexOf(c4) >= 0) return false;  // pagata con la carta privata
   const u = usoOf_(r);
   if (u.uso === 'privato') return false;  // spesa privata: non entra nell'app, nessuna riga, foto o registro (l'email resta nella casella)
   const doc = { uso: u.uso, usoNote: u.uso === 'studio' ? '' : 'studio o privata? ' + u.perche, refs: Array.isArray(r.refs) ? r.refs.slice(0, 10) : [], type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
@@ -795,13 +799,13 @@ function learnPriv_(vendor) {
   const U = JSON.parse(prop('VENDOR_USE') || '{}'); if (U[k]) { delete U[k]; P().setProperty('VENDOR_USE', JSON.stringify(U)); }
 }
 /* "Privata": cancella il documento per sempre, con foto, registro, annulla e articoli. */
-function discard_(id, who) {
+function discard_(id, who, noLearn) {
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
     const d = listDocs_(true).filter(x => x.id === id)[0];
     if (!d) return { ok: false };
     if (d.type === 'cliente') throw new Error('non_privata');
-    learnPriv_(d.vendor);
+    if (!noLearn) learnPriv_(d.vendor);
     const set = {}; set[id] = 1;
     const ss = SpreadsheetApp.openById(prop('SHEET_ID'));
     // anche i doppioni già stornati della stessa spesa (stessa spesa arrivata da PayPal, carta, fornitore)
@@ -930,4 +934,41 @@ function contaPrivate() {
   for (let i = 1; i < v.length; i++) { if (isP(v[i])) a++; else if (isV(v[i])) b++; }
   Logger.log('Personali importate: ' + a + ' · segnate Privata: ' + b);
   return { personali: a, privata: b };
+}
+
+/* ================= PayPal privato e carta privata =================
+ * PayPal privato = conto con login denisrider00: le sue email arrivano a denisrider00 e non entrano mai nell'app.
+ * Carte private: ultime 4 cifre nella proprietà dello script PRIV_CARDS (es. ["1234"]), mai scritte nel codice.
+ * Le email dei negozi (eBay, Amazon...) continuano a passare dalla decisione studio/privata, salvo se citano la carta privata. */
+function privCards_() { try { return JSON.parse(prop('PRIV_CARDS') || '[]').map(String); } catch (e) { return []; } }
+function isPayPal_(from) { return /@([\w-]+\.)*paypal\.[a-z.]+/i.test(String(from || '')); }
+function privCard_(txt) {
+  return privCards_().some(c => new RegExp('(\\*|•|·|x|X|\\.\\.\\.|endet auf|endend auf|endet mit|endend mit|ending in|ends in|ending|termina(?:nte)? (?:in|con|per)|finisce (?:con|in|per)|ziffern|karte|card|carta|mastercard|visa)[^0-9\\n]{0,25}' + c + '(?!\\d)', 'i').test(String(txt || '')));
+}
+function privMail_(raw, owner) {
+  const txt = [raw.subject, raw.body].join(' ');
+  if (isPayPal_(raw.from) && (/denisrider00/i.test(String(owner || '')) || /denisrider00@gmail\.com/i.test(String(raw.to || '') + ' ' + txt))) return 'paypal privato';
+  if (privCard_(txt)) return 'carta privata';
+  return '';
+}
+/* Elenco (senza toccare niente) dei documenti già in archivio arrivati dalla casella info che sono PayPal privato o carta privata. */
+function candidatiPrivati() {
+  const out = [];
+  listDocs_(false).forEach(d => {
+    let why = privCard_([d.vendor, d.note, d.number, d.refs].join(' ')) ? 'carta privata (testo)' : '';
+    if (!why && d.src === 'email' && d.msgId && !/denisrider00/i.test(String(d.owner))) {
+      try { const m = GmailApp.getMessageById(String(d.msgId)); why = privMail_({ from: m.getFrom(), to: m.getTo(), subject: m.getSubject(), body: (m.getPlainBody() || '').slice(0, 6000) }, 'info'); } catch (e) {}
+    }
+    if (why) out.push([d.id, d.date, d.vendor, d.total, why].join(' | '));
+  });
+  Logger.log(out.length + ' candidati\n' + out.join('\n'));
+  return out;
+}
+/* Cancella per sempre i documenti scelti da Denis (proprietà DA_ELIMINARE = lista di id), poi svuota la proprietà. */
+function eliminaScelti() {
+  const ids = JSON.parse(prop('DA_ELIMINARE') || '[]'); let n = 0;
+  ids.forEach(id => { if (discard_(String(id), 'denisrider00@gmail.com', true).ok) n++; });
+  P().deleteProperty('DA_ELIMINARE');
+  Logger.log(n + ' documenti eliminati');
+  return n;
 }
