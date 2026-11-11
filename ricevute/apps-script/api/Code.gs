@@ -62,10 +62,8 @@ function doPost(e) {
     const need = () => { if (!admin) throw new Error('solo_lettura'); };
     switch (req.action) {
       case 'me': return out_({ email: user.email, role: user.role });
-      case 'list': { const all = listDocs_(true); return out_({ docs: all.filter(d => !d.deleted && !isPers_(d) && (admin || !d.priv)), undo: admin ? undoInfo_() : null, saved: admin ? JSON.parse(prop('SAVED') || '[]') : [], pers: user.email === DENIS ? { hasPw: !!prop('PERS_HASH'), n: all.filter(d => !d.deleted && isPers_(d)).length } : null }); }
-      case 'persSetPw': return out_(persSetPw_(user.email, req.pw, req.old));
-      case 'persList': persCheck_(user.email, req.pw); return out_({ docs: listDocs_(true).filter(d => !d.deleted && isPers_(d)) });
-      case 'persMove': return out_(persMove_(user.email, req.id, req.to, req.pw));
+      case 'list': return out_({ docs: listDocs_(false).filter(d => admin || !d.priv), undo: admin ? undoInfo_() : null, saved: admin ? JSON.parse(prop('SAVED') || '[]') : [] });
+      case 'discard': need(); return out_(discard_(req.id, user.email));
       case 'undo': need(); return out_(undoRedo_(user.email, false));
       case 'redo': need(); return out_(undoRedo_(user.email, true));
       case 'save': need(); return out_({ doc: saveDoc_(req.doc, req.photo, req.mime, user.email) });
@@ -156,7 +154,7 @@ function history_(id) {
 function listDocs_(all) {
   const v = sheet_().getDataRange().getValues(); const h = v.shift();
   return v.map(r => { const o = {}; h.forEach((k, i) => { if (r[i] !== '' && r[i] !== null) o[k] = r[i] instanceof Date ? Utilities.formatDate(r[i], 'Europe/Berlin', 'yyyy-MM-dd') : r[i]; }); return o; })
-          .filter(d => all || (!d.deleted && !isPers_(d)));
+          .filter(d => all || !d.deleted);
 }
 function clean_(d) {
   const s = (x, n) => x == null ? '' : String(x).slice(0, n || 200);
@@ -215,7 +213,6 @@ function delDoc_(id, who) {
 }
 function photo_(id, who) {
   const d = listDocs_(true).filter(x => x.id === id)[0];
-  if (d && isPers_(d) && who !== DENIS) return { none: true };
   if (!d || !d.photoId) return { none: true };
   const b = DriveApp.getFileById(d.photoId).getBlob();
   return { mime: b.getContentType(), data: Utilities.base64Encode(b.getBytes()) };
@@ -356,7 +353,6 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
   const c = clean_(Object.assign({}, doc, { status }));
   const now = new Date().toISOString();
   const rec = Object.assign({ id: Utilities.getUuid(), src: 'email', msgId, mailUrl, owner, createdAt: now, createdBy: 'email', updatedAt: now, updatedBy: 'email' }, c);
-  rec.pers = doc.pers === true;
   if (doc.usoNote) rec.note = String(doc.usoNote + (rec.note ? ' · ' + rec.note : '')).slice(0, 500);
   if (doc.uso === 'dubbio') rec.status = 'confirm';
   rec.refs = JSON.stringify((doc.refs || []).map(x => ({ t: String(x && x.t || 'altro').slice(0, 12), v: String(x && x.v || x || '').slice(0, 60) })).filter(x => x.v));
@@ -368,7 +364,7 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
     if (listDocs_(true).some(d => d.msgId === msgId)) return false;
     sh.appendRow(h.map(k => rec[k] === undefined ? '' : rec[k]));
     fileDoc_(rec);
-    log_('email (' + owner + ')', rec.pers ? 'importato (personale)' : 'importato', rec.id, rec.pers ? '' : [rec.vendor, rec.number, rec.total].filter(Boolean).join(' · '));
+    log_('email (' + owner + ')', 'importato', rec.id, [rec.vendor, rec.number, rec.total].filter(Boolean).join(' · '));
   } finally { lock.releaseLock(); }
   try { const r = dedupe_(false, rec.id); if (r.merged.length) log_('doppioni', 'unito all\'import', rec.id, JSON.stringify(r.merged[0]).slice(0, 500)); } catch (e) { log_('doppioni', 'errore', rec.id, String(e.message).slice(0, 200)); }
   return true;
@@ -387,7 +383,8 @@ ${usoPrompt_()}` }];
   const r = ai_(parts, true);
   if (!r.expense || r.total == null) return false;
   const u = usoOf_(r);
-  const doc = { pers: u.uso === 'privato', uso: u.uso, usoNote: u.uso === 'studio' ? '' : (u.uso === 'privato' ? 'personale: ' : 'studio o personale? ') + u.perche, refs: Array.isArray(r.refs) ? r.refs.slice(0, 10) : [], type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
+  if (u.uso === 'privato') return false;  // spesa privata: non entra nell'app, nessuna riga, foto o registro (l'email resta nella casella)
+  const doc = { uso: u.uso, usoNote: u.uso === 'studio' ? '' : 'studio o privata? ' + u.perche, refs: Array.isArray(r.refs) ? r.refs.slice(0, 10) : [], type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
   return storeMailDoc_(doc, String(raw.msgId), String(raw.mailUrl || ''), raw.att ? { mime: raw.att.mime, bytes: Utilities.base64Decode(raw.att.data), name: raw.att.name } : null, status, owner);
 }
 function collect_(req) {
@@ -409,7 +406,7 @@ function dailyBackup() {
   folder.createFile(xlsx);
   folder.createFile(Utilities.newBlob(JSON.stringify(listDocs_(true)), 'application/json', 'Archivio_' + day + '.json'));
   const limit = Date.now() - 1000 * 60 * 60 * 24 * 60;
-  const it = folder.getFiles(); while (it.hasNext()) { const f = it.next(); if (f.getDateCreated().getTime() < limit) f.setTrashed(true); }
+  const it = folder.getFiles(); while (it.hasNext()) { const f = it.next(), m = f.getName().match(/(\d{4}-\d{2}-\d{2})/), t = m ? new Date(m[1] + 'T12:00:00Z').getTime() : f.getDateCreated().getTime(); if (t < limit) driveDel_(f.getId()); }
   log_('backup', 'giornaliero', '', day);
 }
 
@@ -566,7 +563,7 @@ function fileDoc_(d) {
     const date = d.date instanceof Date ? Utilities.formatDate(d.date, 'Europe/Berlin', 'yyyy-MM') : String(d.date || '').slice(0, 7);
     const del = d.deleted === true || String(d.deleted).toUpperCase() === 'TRUE';
     const priv = d.priv === true || String(d.priv).toUpperCase() === 'TRUE';
-    const target = sub_(all, del ? 'Stornati' : isPers_(d) ? 'Personali Denis' : priv ? 'Privati' : (/^\d{4}-\d{2}$/.test(date) ? date : 'Senza data'));
+    const target = sub_(all, del ? 'Stornati' : priv ? 'Privati' : (/^\d{4}-\d{2}$/.test(date) ? date : 'Senza data'));
     const name = fileName_(d);
     if (file.getName() !== name) file.setName(name);
     const parents = file.getParents(); let inside = false;
@@ -676,7 +673,7 @@ function lines_(ids) {
 const DUP_STOP = ['gmbh', 'ltd', 'limited', 'ireland', 'inc', 'kg', 'sub', 'com', 'www', 'paypal', 'europe', 'sarl', 'the', 'und', 'and', 'online', 'shop', 'store', 'services', 'service', 'payment', 'payments', 'zahlung', 'pte', 'llc', 'germany', 'deutschland', 'gbr', 'mbh', 'co'];
 function ensureCols_() {
   const sh = sheet_(), h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  ['refs', 'altre', 'pers'].forEach(k => { if (h.indexOf(k) < 0) { sh.getRange(1, sh.getLastColumn() + 1).setValue(k); } });
+  ['refs', 'altre'].forEach(k => { if (h.indexOf(k) < 0) { sh.getRange(1, sh.getLastColumn() + 1).setValue(k); } });
 }
 function vtok_(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length >= 3 && DUP_STOP.indexOf(w) < 0 && !/^\d+$/.test(w)); }
 function refsOf_(d) {
@@ -716,7 +713,6 @@ function dedupe_(dry, onlyId) {
       const a = docs[i], b = docs[j];
       if (onlyId && a.id !== onlyId && b.id !== onlyId) continue;
       if (String(a.priv).toUpperCase() === 'TRUE' !== (String(b.priv).toUpperCase() === 'TRUE')) continue;
-      if (isPers_(a) !== isPers_(b)) continue;
       const w = dupPair_(a, b); if (!w) continue;
       par[f(a.id)] = f(b.id); why[a.id + '|' + b.id] = w;
     }
@@ -761,71 +757,177 @@ function dedupe_(dry, onlyId) {
   } finally { lock.releaseLock(); }
 }
 
-/* ================= spese personali di Denis: riconosciute all'import email, visibili solo a Denis con password ================= */
-const DENIS = 'denisrider00@gmail.com';
+/* ================= spese private: non entrano nell'app =================
+ * All'import email l'AI decide studio / privata / dubbio. Privata = scartata (nessuna riga, foto, registro o backup; l'email resta nella casella).
+ * Dubbio = "da confermare". Se Denis o Linda toccano "Privata" il documento viene cancellato del tutto (discard_), senza annulla.
+ * Per Amazon, eBay, PayPal e simili decide l'articolo, non il venditore.
+ * I fornitori segnati come privati si ricordano solo come impronta cifrata (VENDOR_PRIV), mai con il nome leggibile. */
 const MARKET = /amazon|ebay|paypal|aliexpress|temu|otto\b|kaufland|etsy|shein|wish|klarna|zalando/i;
-function isPers_(d) { return d && (d.pers === true || String(d.pers).toUpperCase() === 'TRUE'); }
 function vkey_(v) { return vtok_(v).slice(0, 2).join(' '); }
+function vhash_(k) { return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature('vendor:' + k, prop('SECRET'))).slice(0, 22); }
 function usoPrompt_() {
   if (!usoPrompt_.txt) {
-    const learned = JSON.parse(prop('VENDOR_USE') || '{}'), studio = {}, priv = [];
-    listDocs_(true).forEach(d => { if (!d.deleted && !isPers_(d) && d.type !== 'cliente' && d.status === 'ok' && d.vendor && !MARKET.test(d.vendor)) studio[String(d.vendor).slice(0, 40)] = 1; });
-    Object.keys(learned).forEach(k => { if (learned[k] === 'privato') priv.push(k); else studio[k] = 1; });
-    usoPrompt_.txt = `USO: Waiblingen Ink è uno studio di tatuaggi. Decidi se la spesa è per lo STUDIO o PERSONALE di Denis.
+    const learned = JSON.parse(prop('VENDOR_USE') || '{}'), studio = {};
+    listDocs_(false).forEach(d => { if (!d.priv && d.type !== 'cliente' && d.status === 'ok' && d.vendor && !MARKET.test(d.vendor)) studio[String(d.vendor).slice(0, 40)] = 1; });
+    Object.keys(learned).forEach(k => { if (learned[k] === 'studio') studio[k] = 1; });
+    usoPrompt_.txt = `USO: Waiblingen Ink è uno studio di tatuaggi. Decidi se la spesa è per lo STUDIO o PRIVATA.
 Studio: materiale per tatuaggi (inchiostri, aghi, cartucce, guanti, pellicola, carta, disinfettanti, stencil), pulizia, ufficio e stampanti, software e abbonamenti digitali, telefono e internet, pubblicità, arredamento e attrezzatura dello studio, corsi, affitto, energia, assicurazioni, tasse e consulenze dell'attività.
-Personale: vestiti e scarpe, spesa alimentare, piante e giardino, gomme e ricambi auto privata, legna e carbone, casa, animali, giocattoli, tempo libero, ristoranti privati.
+Privata: vestiti e scarpe, spesa alimentare, piante e giardino, gomme e ricambi auto privata, legna e carbone, casa, animali, giocattoli, tempo libero, ristoranti privati.
 Per Amazon, eBay, PayPal, AliExpress, Temu e altri marketplace decidi dall'ARTICOLO comprato, non dal venditore. Se non sei sicuro metti "dubbio".
-Fornitori già usati per lo studio: ${Object.keys(studio).slice(0, 80).join(', ') || 'nessuno'}. Fornitori segnati da Denis come personali: ${priv.slice(0, 40).join(', ') || 'nessuno'}.
-Aggiungi al JSON: "uso":"studio|privato|dubbio","perche":"motivo breve in italiano (es. scarpe da uomo, abbonamento software)"`;
+Fornitori già usati per lo studio: ${Object.keys(studio).slice(0, 80).join(', ') || 'nessuno'}.
+Aggiungi al JSON: "uso":"studio|privato|dubbio","perche":"motivo breve in italiano (es. abbonamento software)"`;
   }
   return usoPrompt_.txt;
 }
 function usoOf_(r) {
-  const learned = JSON.parse(prop('VENDOR_USE') || '{}'), k = vkey_(r.vendor);
-  if (k && !MARKET.test(String(r.vendor || '')) && learned[k]) return { uso: learned[k], perche: learned[k] === 'privato' ? 'fornitore segnato da Denis come personale' : 'fornitore dello studio' };
+  const vendor = String(r.vendor || ''), k = vkey_(vendor);
+  if (k && !MARKET.test(vendor)) {
+    if (JSON.parse(prop('VENDOR_PRIV') || '[]').indexOf(vhash_(k)) >= 0) return { uso: 'privato', perche: '' };
+    if (JSON.parse(prop('VENDOR_USE') || '{}')[k] === 'studio') return { uso: 'studio', perche: 'fornitore dello studio' };
+  }
   const uso = ['studio', 'privato', 'dubbio'].indexOf(r.uso) >= 0 ? r.uso : 'studio';
   return { uso, perche: String(r.perche || '').slice(0, 120) };
 }
-function pwHash_(pw) {
-  let salt = prop('PERS_SALT'); if (!salt) { salt = Utilities.getUuid(); P().setProperty('PERS_SALT', salt); }
-  return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + String(pw || ''), Utilities.Charset.UTF_8));
+function learnPriv_(vendor) {
+  const k = vkey_(vendor); if (!k || MARKET.test(String(vendor || ''))) return;
+  const L = JSON.parse(prop('VENDOR_PRIV') || '[]'), h = vhash_(k);
+  if (L.indexOf(h) < 0) { L.push(h); P().setProperty('VENDOR_PRIV', JSON.stringify(L.slice(-500))); }
+  const U = JSON.parse(prop('VENDOR_USE') || '{}'); if (U[k]) { delete U[k]; P().setProperty('VENDOR_USE', JSON.stringify(U)); }
 }
-function persCheck_(who, pw) {
-  if (who !== DENIS) throw new Error('solo_denis');
-  if (!prop('PERS_HASH')) throw new Error('password_mancante');
-  const c = CacheService.getScriptCache(), fails = Number(c.get('pwfail') || 0);
-  if (fails >= 5) throw new Error('troppi_tentativi');
-  if (pwHash_(pw) !== prop('PERS_HASH')) { c.put('pwfail', String(fails + 1), 900); log_(who, 'password personali sbagliata', '', ''); throw new Error('password_sbagliata'); }
-  c.remove('pwfail');
-}
-function persSetPw_(who, pw, old) {
-  if (who !== DENIS) throw new Error('solo_denis');
-  if (prop('PERS_HASH')) persCheck_(who, old);
-  if (String(pw || '').length < 6) throw new Error('password_corta');
-  P().setProperty('PERS_HASH', pwHash_(pw));
-  log_(who, 'password personali impostata', '', '');
-  return { ok: true };
-}
-function persMove_(who, id, to, pw) {
-  if (who !== DENIS) throw new Error('solo_denis');
-  if (to === 'studio') persCheck_(who, pw);
-  ensureCols_();
-  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+/* "Privata": cancella il documento per sempre, con foto, registro, annulla e articoli. */
+function discard_(id, who) {
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
-    const sh = sheet_(), v = sh.getDataRange().getValues(), h = v[0];
-    for (let i = 1; i < v.length; i++) if (v[i][h.indexOf('id')] === id) {
-      const before = v[i].slice(), row = v[i].slice();
-      row[h.indexOf('pers')] = to !== 'studio';
-      if (to === 'studio') row[h.indexOf('status')] = 'ok';
-      row[h.indexOf('updatedAt')] = new Date().toISOString(); row[h.indexOf('updatedBy')] = who;
-      sh.getRange(i + 1, 1, 1, h.length).setValues([row]);
-      record_(who, id, snap_(h, before), snap_(h, row), to === 'studio' ? 'spesa personale messa nello studio' : 'spesa messa nei personali');
-      log_(who, to === 'studio' ? 'personale → studio' : 'studio → personale', id, '');
-      const vendor = String(v[i][h.indexOf('vendor')] || ''), k = vkey_(vendor);
-      if (k && !MARKET.test(vendor)) { const L = JSON.parse(prop('VENDOR_USE') || '{}'); L[k] = to === 'studio' ? 'studio' : 'privato'; P().setProperty('VENDOR_USE', JSON.stringify(L)); }
-      fileDoc_(snap_(h, row));
-      return { ok: true };
-    }
-    return { ok: false };
+    const d = listDocs_(true).filter(x => x.id === id)[0];
+    if (!d) return { ok: false };
+    if (d.type === 'cliente') throw new Error('non_privata');
+    learnPriv_(d.vendor);
+    const set = {}; set[id] = 1;
+    const ss = SpreadsheetApp.openById(prop('SHEET_ID'));
+    // anche i doppioni già stornati della stessa spesa (stessa spesa arrivata da PayPal, carta, fornitore)
+    ss.getSheetByName('Log').getDataRange().getValues().forEach(r => { if (r[2] === 'doppione stornato' && String(r[4]).indexOf('tenuto ' + id) >= 0 && r[3]) set[r[3]] = 1; });
+    purgeSs_(ss, set, false).forEach(driveDel_);
+    return { ok: true };
   } finally { lock.releaseLock(); }
+}
+/* Cancella per sempre un file di Drive (non nel cestino). */
+function driveDel_(fileId) {
+  if (!fileId) return;
+  UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) + '?supportsAllDrives=true',
+    { method: 'delete', headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+}
+function delRows_(sh, pred) {
+  if (!sh) return 0;
+  const v = sh.getDataRange().getValues(); let n = 0;
+  for (let i = v.length - 1; i >= 1; i--) if (pred(v[i])) { sh.deleteRow(i + 1); n++; }
+  return n;
+}
+/* Toglie da un foglio archivio (vero o copia di backup) i documenti in set; con flags anche quelli segnati pers/priv.
+ * Restituisce le foto da cancellare (solo se nessun documento rimasto le usa). */
+function purgeSs_(ss, set, flags) {
+  const sh = ss.getSheetByName('Docs'); if (!sh) return [];
+  const v = sh.getDataRange().getValues(), h = v[0], idc = h.indexOf('id'), pc = h.indexOf('photoId');
+  const yes = c => { const i = h.indexOf(c); return r => i >= 0 && (r[i] === true || String(r[i]).toUpperCase() === 'TRUE'); };
+  const isP = yes('pers'), isV = yes('priv');
+  if (flags) for (let i = 1; i < v.length; i++) if (isP(v[i]) || isV(v[i])) set[v[i][idc]] = 1;
+  const ids = Object.keys(set).filter(Boolean);
+  const photos = {}, used = {};
+  for (let i = 1; i < v.length; i++) { const p = pc >= 0 ? v[i][pc] : ''; if (!p) continue; if (set[v[i][idc]]) photos[p] = 1; else used[p] = 1; }
+  delRows_(sh, r => !!set[r[idc]]);
+  if (flags && h.indexOf('pers') >= 0) sh.deleteColumn(h.indexOf('pers') + 1);
+  const has = x => { const t = String(x || ''); return ids.some(id => t.indexOf(id) >= 0); };
+  const PERS = /personal|password personali|personali denis/i;
+  delRows_(ss.getSheetByName('Log'), r => !!set[r[3]] || has(r[4]) || PERS.test(String(r[2]) + ' ' + String(r[4])));
+  delRows_(ss.getSheetByName('Undo'), r => !!set[r[3]] || has(r[4]) || has(r[5]) || PERS.test(String(r[7])));
+  delRows_(ss.getSheetByName('Articoli'), r => !!set[r[0]]);
+  return Object.keys(photos).filter(p => !used[p]);
+}
+/* Pulizia una tantum (Esegui dall'editor): toglie dall'app tutte le spese private già salvate (pers o priv),
+ * cancella foto e cartelle Personali/Privati, ripulisce i backup e ricrea il foglio senza cronologia delle versioni.
+ * Se il tempo non basta riparte da sola dopo un minuto. */
+function pulisciPersonali() {
+  const t0 = Date.now(), lock = LockService.getScriptLock(); lock.waitLock(60000);
+  try {
+    const p = P(), set = JSON.parse(prop('CLEAN_IDS') || '{}');
+    if (!prop('CLEAN_STEP')) {
+      purgeSs_(SpreadsheetApp.openById(prop('SHEET_ID')), set, true).forEach(driveDel_);
+      p.setProperty('CLEAN_IDS', JSON.stringify(set));
+      ['PERS_HASH', 'PERS_SALT'].forEach(k => p.deleteProperty(k));
+      const U = JSON.parse(prop('VENDOR_USE') || '{}'), PV = JSON.parse(prop('VENDOR_PRIV') || '[]');
+      Object.keys(U).forEach(k => { if (U[k] !== 'studio') { const h = vhash_(k); if (PV.indexOf(h) < 0) PV.push(h); delete U[k]; } });
+      p.setProperty('VENDOR_USE', JSON.stringify(U)); p.setProperty('VENDOR_PRIV', JSON.stringify(PV));
+      const all = allFolder_();
+      ['Personali Denis', 'Privati'].forEach(n => { const it = all.getFoldersByName(n); while (it.hasNext()) driveDel_(it.next().getId()); });
+      p.setProperty('CLEAN_STEP', 'backup');
+      Logger.log('Archivio ripulito: ' + Object.keys(set).length + ' documenti privati tolti');
+    }
+    if (prop('CLEAN_STEP') === 'backup') {
+      const done = JSON.parse(prop('CLEAN_BK') || '[]'), folder = DriveApp.getFolderById(prop('BACKUP_ID'));
+      const files = []; const it = folder.getFiles(); while (it.hasNext()) files.push(it.next());
+      for (const f of files) {
+        if (done.indexOf(f.getId()) >= 0) continue;
+        if (Date.now() - t0 > 4.5 * 60 * 1000) { p.setProperty('CLEAN_BK', JSON.stringify(done)); again_(); return 'continua tra un minuto'; }
+        const nf = cleanBackup_(f, set, folder); if (nf) done.push(nf);
+        driveDel_(f.getId());
+      }
+      p.setProperty('CLEAN_BK', JSON.stringify(done));
+      p.setProperty('CLEAN_STEP', 'sheet');
+    }
+    if (prop('CLEAN_STEP') === 'sheet') {
+      freshSheet_();
+      ['CLEAN_STEP', 'CLEAN_BK', 'CLEAN_IDS'].forEach(k => p.deleteProperty(k));
+      ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'pulisciPersonali').forEach(t => ScriptApp.deleteTrigger(t));
+      Logger.log('Pulizia finita');
+      return 'pulizia finita';
+    }
+  } finally { lock.releaseLock(); }
+}
+function again_() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'pulisciPersonali').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('pulisciPersonali').timeBased().after(60 * 1000).create();
+}
+/* Backup vecchio -> copia pulita con lo stesso nome (il file vecchio poi si cancella per sempre). */
+function cleanBackup_(f, set, folder) {
+  const name = f.getName(), auth = { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() };
+  if (/\.json$/i.test(name)) {
+    let arr = []; try { arr = JSON.parse(f.getBlob().getDataAsString()); } catch (e) { return null; }
+    const yes = x => x === true || String(x).toUpperCase() === 'TRUE';
+    arr = arr.filter(d => !set[d.id] && !yes(d.pers) && !yes(d.priv)).map(d => { delete d.pers; return d; });
+    return folder.createFile(Utilities.newBlob(JSON.stringify(arr), 'application/json', name)).getId();
+  }
+  if (/\.xlsx$/i.test(name)) {
+    const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + f.getId() + '/copy?fields=id&supportsAllDrives=true', { method: 'post', contentType: 'application/json', headers: auth, muteHttpExceptions: true,
+      payload: JSON.stringify({ name: 'pulizia_tmp', mimeType: 'application/vnd.google-apps.spreadsheet', parents: [folder.getId()] }) });
+    if (r.getResponseCode() !== 200) throw new Error('conversione backup ' + r.getResponseCode());
+    const tmp = JSON.parse(r.getContentText()).id;
+    try {
+      purgeSs_(SpreadsheetApp.openById(tmp), Object.assign({}, set), true);
+      SpreadsheetApp.flush();
+      const x = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + tmp + '/export?format=xlsx', { headers: auth }).getBlob().setName(name);
+      return folder.createFile(x).getId();
+    } finally { driveDel_(tmp); }
+  }
+  return null;
+}
+/* Nuovo foglio archivio identico ma senza cronologia delle versioni (dove si vedrebbero le righe tolte); stessi permessi, nessuna email di avviso. */
+function freshSheet_() {
+  const oldId = prop('SHEET_ID'), auth = { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, api = 'https://www.googleapis.com/drive/v3/files/';
+  SpreadsheetApp.flush();
+  const old = DriveApp.getFileById(oldId), copy = old.makeCopy(old.getName(), DriveApp.getFolderById(prop('FOLDER_ID')));
+  const pr = UrlFetchApp.fetch(api + oldId + '/permissions?fields=permissions(type,role,emailAddress,domain)&supportsAllDrives=true', { headers: auth, muteHttpExceptions: true });
+  if (pr.getResponseCode() === 200) (JSON.parse(pr.getContentText()).permissions || []).forEach(x => {
+    if (x.role === 'owner') return;
+    const body = { type: x.type, role: x.role }; if (x.emailAddress) body.emailAddress = x.emailAddress; if (x.domain) body.domain = x.domain;
+    UrlFetchApp.fetch(api + copy.getId() + '/permissions?sendNotificationEmail=false&supportsAllDrives=true', { method: 'post', contentType: 'application/json', headers: auth, muteHttpExceptions: true, payload: JSON.stringify(body) });
+  });
+  P().setProperty('SHEET_ID', copy.getId());
+  driveDel_(oldId);
+}
+/* Prova senza toccare niente: quante spese private ci sono ancora nell'archivio. */
+function contaPrivate() {
+  const v = sheet_().getDataRange().getValues(), h = v[0], yes = c => { const i = h.indexOf(c); return r => i >= 0 && (r[i] === true || String(r[i]).toUpperCase() === 'TRUE'); };
+  const isP = yes('pers'), isV = yes('priv'); let a = 0, b = 0;
+  for (let i = 1; i < v.length; i++) { if (isP(v[i])) a++; else if (isV(v[i])) b++; }
+  Logger.log('Personali importate: ' + a + ' · segnate Privata: ' + b);
+  return { personali: a, privata: b };
 }
