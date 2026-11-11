@@ -42,7 +42,7 @@ let token=null,user=null;
 let gtoken=null;
 (function(){const m=location.hash.match(/#g=([^&]+)/);if(m){gtoken=decodeURIComponent(m[1]);history.replaceState(null,"",location.pathname)}try{token=localStorage.getItem("wi-token")}catch(e){}})();
 function logout(){try{localStorage.removeItem("wi-token")}catch(e){}token=null;user=null;showLogin()}
-const ERRS={manca_chiave_gemini:["Manca la chiave Gemini","Der Gemini-Schlüssel fehlt"],chiave_claude_non_valida:["Questa non è una chiave Claude (deve iniziare con sk-ant-)","Das ist kein Claude-Schlüssel (muss mit sk-ant- beginnen)"],chiave_claude_rifiutata:["Claude ha rifiutato la chiave","Claude hat den Schlüssel abgelehnt"],non_autorizzato:["Questo account non è autorizzato","Dieses Konto ist nicht freigeschaltet"],azione_sconosciuta:["Azione sconosciuta","Unbekannte Aktion"],bad_request:["Richiesta non valida","Ungültige Anfrage"]};
+const ERRS={solo_denis:["Solo Denis può farlo","Nur Denis kann das"],password_mancante:["Prima scegli una password","Bitte zuerst ein Passwort festlegen"],troppi_tentativi:["Troppi tentativi: riprova tra 15 minuti","Zu viele Versuche: in 15 Minuten erneut versuchen"],password_sbagliata:["Password sbagliata","Falsches Passwort"],password_corta:["Almeno 6 caratteri","Mindestens 6 Zeichen"],manca_chiave_gemini:["Manca la chiave Gemini","Der Gemini-Schlüssel fehlt"],chiave_claude_non_valida:["Questa non è una chiave Claude (deve iniziare con sk-ant-)","Das ist kein Claude-Schlüssel (muss mit sk-ant- beginnen)"],chiave_claude_rifiutata:["Claude ha rifiutato la chiave","Claude hat den Schlüssel abgelehnt"],non_autorizzato:["Questo account non è autorizzato","Dieses Konto ist nicht freigeschaltet"],azione_sconosciuta:["Azione sconosciuta","Unbekannte Aktion"],bad_request:["Richiesta non valida","Ungültige Anfrage"]};
 function errText(e){e=String(e||"");const k=e.split(/[:\s]/)[0];if(ERRS[k])return ERRS[k][L()]+(e.length>k.length?" ("+e.slice(k.length).replace(/^[:\s]+/,"").slice(0,120)+")":"");if(/^(gemini|claude)\b/.test(e))return (lang==="de"?"Die KI antwortet gerade nicht: ":"L'intelligenza artificiale non risponde: ")+e.slice(0,120);return e}
 async function api(action,payload){
   let r;
@@ -59,8 +59,8 @@ $("#logout").onclick=logout;
 /* ---------- dati ---------- */
 let docs=[],editing=null;
 const isAdmin=()=>user&&user.role==="admin";
-let undoInfo=null,savedReqs=[];
-async function load(){try{const j=await api("list");docs=j.docs||[];undoInfo=j.undo||null;savedReqs=j.saved||[];renderAll()}catch(e){if(e.message!=="login")toast(e.message)}}
+let undoInfo=null,savedReqs=[],persInfo=null,persPw=null,persDocs=[];
+async function load(){try{const j=await api("list");docs=j.docs||[];undoInfo=j.undo||null;savedReqs=j.saved||[];persInfo=j.pers||null;renderAll()}catch(e){if(e.message!=="login")toast(e.message)}}
 
 /* ---------- viste ---------- */
 function show(v){
@@ -631,3 +631,29 @@ async function agItems(st,h0,cand){const box=$("#askOut"),tok=st._tok=Math.rando
   draw(head+warn+(hits.length?`<div class="list" id="agList">${rows}<div class="tot"><div class="totn">${esc(nm)} · ${hits.length} ${esc(t("docsN"))}</div><div class="totr"><span>${esc(L2("Spesa solo per questo prodotto","Ausgaben nur für dieses Produkt"))}</span><b>${esc(eur(r2(tot)))}</b></div></div></div><div class="xbar hide" id="agX"></div><button type="button" class="agsave" id="agSave">☆ ${esc(L2("Salva come richiesta fissa","Als festen Auftrag speichern"))}</button>`:""));
   renderXbar("agX","#agList");
   const sv=$("#agSave");if(sv)sv.onclick=async()=>{sv.disabled=true;try{const r=await api("saveReq",{name:st.title||st.q,q:st.q});savedReqs=r.saved||[];agSavedRender();sv.textContent="★ "+L2("Salvata","Gespeichert")}catch(err){sv.disabled=false;toast(errText(err.message))}}}
+
+/* ---------- Spese personali (solo Denis, con password) ---------- */
+const isDenis=()=>user&&String(user.email).toLowerCase()==="denisrider00@gmail.com";
+function renderPersBtn(){const b=$("#persBtn");if(!b)return;const on=!!(isDenis()&&persInfo);b.classList.toggle("hide",!on);if(!on){$("#persBox").classList.add("hide");return}
+  $("#persT").textContent=L2("Spese personali (solo Denis)","Private Ausgaben (nur Denis)");$("#persN").textContent=persInfo.n;}
+function persLock(){const box=$("#persBox"),first=!persInfo.hasPw;
+  box.innerHTML=`<b>${esc(first?L2("Scegli una password per le tue spese personali","Wähle ein Passwort für deine privaten Ausgaben"):L2("Password","Passwort"))}</b>`+
+   (first?`<p class="aggot">${esc(L2("Solo tu la conosci: nessun altro la vede, nemmeno Linda. Almeno 6 caratteri.","Nur du kennst es, auch Linda nicht. Mindestens 6 Zeichen."))}</p>`:"")+
+   `<input type="password" id="pw1" autocomplete="${first?"new-password":"current-password"}" placeholder="${esc(L2("Password","Passwort"))}">`+(first?`<input type="password" id="pw2" autocomplete="new-password" placeholder="${esc(L2("Ripeti la password","Passwort wiederholen"))}">`:"")+
+   `<button class="primary" id="pwGo" type="button">${esc(first?L2("Salva e apri","Speichern und öffnen"):L2("Apri","Öffnen"))}</button>`;
+  const go=async()=>{const p=$("#pw1").value;if(first&&p!==$("#pw2").value)return toast(L2("Le due password non sono uguali","Die Passwörter stimmen nicht überein"));
+    try{if(first){await api("persSetPw",{pw:p});persInfo.hasPw=true}await persOpen(p)}catch(err){toast(errText(err.message))}};
+  $("#pwGo").onclick=go;box.querySelectorAll("input").forEach(i=>i.onkeydown=e=>{if(e.key==="Enter")go()})}
+async function persOpen(p){const j=await api("persList",{pw:p});persPw=p;persDocs=(j.docs||[]).sort((a,b)=>String(b.date).localeCompare(String(a.date)));persInfo.n=persDocs.length;renderPersBtn();persRender()}
+function persRender(){const box=$("#persBox"),tot=persDocs.reduce((a,d)=>a+(+d.total||0),0);
+  box.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(L2("Non contate nei conti dello studio","Nicht in der Studio-Buchhaltung"))}</b><button class="link" id="persClose" type="button">🔒 ${esc(L2("Chiudi","Schließen"))}</button></div>`+
+   (persDocs.length?persDocs.map(d=>`<div class="pr"><div><b>${esc(d.vendor||"")}</b><small>${esc(fmtDate(d.date))} · ${esc(String(d.note||"").slice(0,90))}</small></div><span class="mono">${esc(eur(d.total))}</span><button type="button" data-pmove="${esc(d.id)}">Studio →</button></div>`).join("")+`<div style="display:flex;justify-content:space-between"><span>${esc(L2("Totale personali","Summe privat"))} · ${persDocs.length}</span><b class="mono">${esc(eur(r2(tot)))}</b></div>`
+   :`<p class="aggot">${esc(L2("Nessuna spesa personale.","Keine privaten Ausgaben."))}</p>`);
+  $("#persClose").onclick=()=>{persPw=null;persDocs=[];box.classList.add("hide")}}
+$("#persBtn").onclick=()=>{const box=$("#persBox");if(!box.classList.contains("hide")){if(!persPw)box.classList.add("hide");return}box.classList.remove("hide");persPw?persRender():persLock()};
+document.addEventListener("click",async e=>{const b=e.target.closest("[data-pmove]");if(!b)return;b.disabled=true;
+  try{await api("persMove",{id:b.dataset.pmove,to:"studio",pw:persPw});toast(L2("Messo nello studio ✓","Ins Studio verschoben ✓"));await persOpen(persPw);await load()}catch(err){b.disabled=false;toast(errText(err.message))}});
+$("#toPers").onclick=async()=>{const d=editing;if(!d||!d.id)return;const b=$("#toPers");b.disabled=true;
+  try{await api("persMove",{id:d.id,to:"privato"});toast(L2("Spostato nelle tue spese personali 🔒","In deine privaten Ausgaben verschoben 🔒"));editing=null;await load();show("arch")}catch(err){toast(errText(err.message))}finally{b.disabled=false}};
+const _fillCard2=fillCard;fillCard=function(){_fillCard2();const d=editing;$("#toPers").classList.toggle("hide",!(isDenis()&&d&&!d._new&&d.type!=="cliente"));$("#toPersT").textContent=L2("Spesa personale (solo Denis)","Private Ausgabe (nur Denis)")};
+const _renderAll4=renderAll;renderAll=function(){_renderAll4();renderPersBtn()};

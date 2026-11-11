@@ -62,7 +62,10 @@ function doPost(e) {
     const need = () => { if (!admin) throw new Error('solo_lettura'); };
     switch (req.action) {
       case 'me': return out_({ email: user.email, role: user.role });
-      case 'list': return out_({ docs: listDocs_().filter(d => admin || !d.priv), undo: admin ? undoInfo_() : null, saved: admin ? JSON.parse(prop('SAVED') || '[]') : [] });
+      case 'list': { const all = listDocs_(true); return out_({ docs: all.filter(d => !d.deleted && !isPers_(d) && (admin || !d.priv)), undo: admin ? undoInfo_() : null, saved: admin ? JSON.parse(prop('SAVED') || '[]') : [], pers: user.email === DENIS ? { hasPw: !!prop('PERS_HASH'), n: all.filter(d => !d.deleted && isPers_(d)).length } : null }); }
+      case 'persSetPw': return out_(persSetPw_(user.email, req.pw, req.old));
+      case 'persList': persCheck_(user.email, req.pw); return out_({ docs: listDocs_(true).filter(d => !d.deleted && isPers_(d)) });
+      case 'persMove': return out_(persMove_(user.email, req.id, req.to, req.pw));
       case 'undo': need(); return out_(undoRedo_(user.email, false));
       case 'redo': need(); return out_(undoRedo_(user.email, true));
       case 'save': need(); return out_({ doc: saveDoc_(req.doc, req.photo, req.mime, user.email) });
@@ -72,7 +75,7 @@ function doPost(e) {
         try { const f = readImage_(req.photo, req.mime); log_(user.email, 'lettura ok', '', (Date.now() - t0) + 'ms · ' + (ai_.trace || '')); return out_({ fields: f }); }
         catch (err) { log_(user.email, 'lettura errore', '', (Date.now() - t0) + 'ms · ' + (ai_.trace || '') + ' · ' + err.message); throw err; }
       }
-      case 'photo': return out_(photo_(req.id));
+      case 'photo': return out_(photo_(req.id, user.email));
       case 'history': return out_({ items: history_(req.id) });
       case 'ask': return out_(ask_(req.q, admin, req.lang));
       case 'agent': need(); return out_(agent_(req.q, req.lang, user.email));
@@ -153,7 +156,7 @@ function history_(id) {
 function listDocs_(all) {
   const v = sheet_().getDataRange().getValues(); const h = v.shift();
   return v.map(r => { const o = {}; h.forEach((k, i) => { if (r[i] !== '' && r[i] !== null) o[k] = r[i] instanceof Date ? Utilities.formatDate(r[i], 'Europe/Berlin', 'yyyy-MM-dd') : r[i]; }); return o; })
-          .filter(d => all || !d.deleted);
+          .filter(d => all || (!d.deleted && !isPers_(d)));
 }
 function clean_(d) {
   const s = (x, n) => x == null ? '' : String(x).slice(0, n || 200);
@@ -210,8 +213,9 @@ function delDoc_(id, who) {
     return { ok: false };
   } finally { lock.releaseLock(); }
 }
-function photo_(id) {
+function photo_(id, who) {
   const d = listDocs_(true).filter(x => x.id === id)[0];
+  if (d && isPers_(d) && who !== DENIS) return { none: true };
   if (!d || !d.photoId) return { none: true };
   const b = DriveApp.getFileById(d.photoId).getBlob();
   return { mime: b.getContentType(), data: Utilities.base64Encode(b.getBytes()) };
@@ -352,6 +356,9 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
   const c = clean_(Object.assign({}, doc, { status }));
   const now = new Date().toISOString();
   const rec = Object.assign({ id: Utilities.getUuid(), src: 'email', msgId, mailUrl, owner, createdAt: now, createdBy: 'email', updatedAt: now, updatedBy: 'email' }, c);
+  rec.pers = doc.pers === true;
+  if (doc.usoNote) rec.note = String(doc.usoNote + (rec.note ? ' · ' + rec.note : '')).slice(0, 500);
+  if (doc.uso === 'dubbio') rec.status = 'confirm';
   rec.refs = JSON.stringify((doc.refs || []).map(x => ({ t: String(x && x.t || 'altro').slice(0, 12), v: String(x && x.v || x || '').slice(0, 60) })).filter(x => x.v));
   ensureCols_();
   if (att) { const f = DriveApp.getFolderById(prop('MAIL_ID')).createFile(Utilities.newBlob(att.bytes, att.mime, (rec.date || '') + '_' + att.name)); rec.photoId = f.getId(); rec.mime = att.mime; }
@@ -361,7 +368,7 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
     if (listDocs_(true).some(d => d.msgId === msgId)) return false;
     sh.appendRow(h.map(k => rec[k] === undefined ? '' : rec[k]));
     fileDoc_(rec);
-    log_('email (' + owner + ')', 'importato', rec.id, [rec.vendor, rec.number, rec.total].filter(Boolean).join(' · '));
+    log_('email (' + owner + ')', rec.pers ? 'importato (personale)' : 'importato', rec.id, rec.pers ? '' : [rec.vendor, rec.number, rec.total].filter(Boolean).join(' · '));
   } finally { lock.releaseLock(); }
   try { const r = dedupe_(false, rec.id); if (r.merged.length) log_('doppioni', 'unito all\'import', rec.id, JSON.stringify(r.merged[0]).slice(0, 500)); } catch (e) { log_('doppioni', 'errore', rec.id, String(e.message).slice(0, 200)); }
   return true;
@@ -374,11 +381,13 @@ ${String(raw.body || '').slice(0, 6000)}
 
 Decidi se è la PROVA di una SPESA dello studio o di una fattura di un fornitore (scontrino, fattura, ricevuta di pagamento, addebito). NON sono spese: newsletter, pubblicità, conferme di ordine senza importo, incassi ricevuti, resoconti di vendite, avvisi di sicurezza.
 Rispondi SOLO con JSON {"expense":true|false,"type":"acquisto|fattura","vendor":string,"date":"YYYY-MM-DD","number":string|null,"total":number|null,"rate":19|7|0|null,"category":"${CATS.join('|')}","due":"YYYY-MM-DD"|null,"iban":string|null,"note":"breve descrizione","refs":[{"t":"fattura|ordine|transazione|altro","v":"ogni numero di riferimento che trovi: numero fattura, numero ordine, ID transazione PayPal, riferimento carta o banca, numero cliente escluso"}]}.
-Abbonamenti digitali -> "software". Se non c'è un importo chiaro, expense=false.` }];
+Abbonamenti digitali -> "software". Se non c'è un importo chiaro, expense=false.
+${usoPrompt_()}` }];
   if (raw.att) parts.push({ inline_data: { mime_type: raw.att.mime, data: raw.att.data } });
   const r = ai_(parts, true);
   if (!r.expense || r.total == null) return false;
-  const doc = { refs: Array.isArray(r.refs) ? r.refs.slice(0, 10) : [], type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
+  const u = usoOf_(r);
+  const doc = { pers: u.uso === 'privato', uso: u.uso, usoNote: u.uso === 'studio' ? '' : (u.uso === 'privato' ? 'personale: ' : 'studio o personale? ') + u.perche, refs: Array.isArray(r.refs) ? r.refs.slice(0, 10) : [], type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
   return storeMailDoc_(doc, String(raw.msgId), String(raw.mailUrl || ''), raw.att ? { mime: raw.att.mime, bytes: Utilities.base64Decode(raw.att.data), name: raw.att.name } : null, status, owner);
 }
 function collect_(req) {
@@ -557,7 +566,7 @@ function fileDoc_(d) {
     const date = d.date instanceof Date ? Utilities.formatDate(d.date, 'Europe/Berlin', 'yyyy-MM') : String(d.date || '').slice(0, 7);
     const del = d.deleted === true || String(d.deleted).toUpperCase() === 'TRUE';
     const priv = d.priv === true || String(d.priv).toUpperCase() === 'TRUE';
-    const target = sub_(all, del ? 'Stornati' : priv ? 'Privati' : (/^\d{4}-\d{2}$/.test(date) ? date : 'Senza data'));
+    const target = sub_(all, del ? 'Stornati' : isPers_(d) ? 'Personali Denis' : priv ? 'Privati' : (/^\d{4}-\d{2}$/.test(date) ? date : 'Senza data'));
     const name = fileName_(d);
     if (file.getName() !== name) file.setName(name);
     const parents = file.getParents(); let inside = false;
@@ -667,7 +676,7 @@ function lines_(ids) {
 const DUP_STOP = ['gmbh', 'ltd', 'limited', 'ireland', 'inc', 'kg', 'sub', 'com', 'www', 'paypal', 'europe', 'sarl', 'the', 'und', 'and', 'online', 'shop', 'store', 'services', 'service', 'payment', 'payments', 'zahlung', 'pte', 'llc', 'germany', 'deutschland', 'gbr', 'mbh', 'co'];
 function ensureCols_() {
   const sh = sheet_(), h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  ['refs', 'altre'].forEach(k => { if (h.indexOf(k) < 0) { sh.getRange(1, sh.getLastColumn() + 1).setValue(k); } });
+  ['refs', 'altre', 'pers'].forEach(k => { if (h.indexOf(k) < 0) { sh.getRange(1, sh.getLastColumn() + 1).setValue(k); } });
 }
 function vtok_(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length >= 3 && DUP_STOP.indexOf(w) < 0 && !/^\d+$/.test(w)); }
 function refsOf_(d) {
@@ -707,6 +716,7 @@ function dedupe_(dry, onlyId) {
       const a = docs[i], b = docs[j];
       if (onlyId && a.id !== onlyId && b.id !== onlyId) continue;
       if (String(a.priv).toUpperCase() === 'TRUE' !== (String(b.priv).toUpperCase() === 'TRUE')) continue;
+      if (isPers_(a) !== isPers_(b)) continue;
       const w = dupPair_(a, b); if (!w) continue;
       par[f(a.id)] = f(b.id); why[a.id + '|' + b.id] = w;
     }
@@ -748,5 +758,74 @@ function dedupe_(dry, onlyId) {
     });
     if (!dry && merged.length) log_(who, 'pulizia doppioni', '', merged.length + ' spese unite');
     return { merged };
+  } finally { lock.releaseLock(); }
+}
+
+/* ================= spese personali di Denis: riconosciute all'import email, visibili solo a Denis con password ================= */
+const DENIS = 'denisrider00@gmail.com';
+const MARKET = /amazon|ebay|paypal|aliexpress|temu|otto\b|kaufland|etsy|shein|wish|klarna|zalando/i;
+function isPers_(d) { return d && (d.pers === true || String(d.pers).toUpperCase() === 'TRUE'); }
+function vkey_(v) { return vtok_(v).slice(0, 2).join(' '); }
+function usoPrompt_() {
+  if (!usoPrompt_.txt) {
+    const learned = JSON.parse(prop('VENDOR_USE') || '{}'), studio = {}, priv = [];
+    listDocs_(true).forEach(d => { if (!d.deleted && !isPers_(d) && d.type !== 'cliente' && d.status === 'ok' && d.vendor && !MARKET.test(d.vendor)) studio[String(d.vendor).slice(0, 40)] = 1; });
+    Object.keys(learned).forEach(k => { if (learned[k] === 'privato') priv.push(k); else studio[k] = 1; });
+    usoPrompt_.txt = `USO: Waiblingen Ink è uno studio di tatuaggi. Decidi se la spesa è per lo STUDIO o PERSONALE di Denis.
+Studio: materiale per tatuaggi (inchiostri, aghi, cartucce, guanti, pellicola, carta, disinfettanti, stencil), pulizia, ufficio e stampanti, software e abbonamenti digitali, telefono e internet, pubblicità, arredamento e attrezzatura dello studio, corsi, affitto, energia, assicurazioni, tasse e consulenze dell'attività.
+Personale: vestiti e scarpe, spesa alimentare, piante e giardino, gomme e ricambi auto privata, legna e carbone, casa, animali, giocattoli, tempo libero, ristoranti privati.
+Per Amazon, eBay, PayPal, AliExpress, Temu e altri marketplace decidi dall'ARTICOLO comprato, non dal venditore. Se non sei sicuro metti "dubbio".
+Fornitori già usati per lo studio: ${Object.keys(studio).slice(0, 80).join(', ') || 'nessuno'}. Fornitori segnati da Denis come personali: ${priv.slice(0, 40).join(', ') || 'nessuno'}.
+Aggiungi al JSON: "uso":"studio|privato|dubbio","perche":"motivo breve in italiano (es. scarpe da uomo, abbonamento software)"`;
+  }
+  return usoPrompt_.txt;
+}
+function usoOf_(r) {
+  const learned = JSON.parse(prop('VENDOR_USE') || '{}'), k = vkey_(r.vendor);
+  if (k && !MARKET.test(String(r.vendor || '')) && learned[k]) return { uso: learned[k], perche: learned[k] === 'privato' ? 'fornitore segnato da Denis come personale' : 'fornitore dello studio' };
+  const uso = ['studio', 'privato', 'dubbio'].indexOf(r.uso) >= 0 ? r.uso : 'studio';
+  return { uso, perche: String(r.perche || '').slice(0, 120) };
+}
+function pwHash_(pw) {
+  let salt = prop('PERS_SALT'); if (!salt) { salt = Utilities.getUuid(); P().setProperty('PERS_SALT', salt); }
+  return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + String(pw || ''), Utilities.Charset.UTF_8));
+}
+function persCheck_(who, pw) {
+  if (who !== DENIS) throw new Error('solo_denis');
+  if (!prop('PERS_HASH')) throw new Error('password_mancante');
+  const c = CacheService.getScriptCache(), fails = Number(c.get('pwfail') || 0);
+  if (fails >= 5) throw new Error('troppi_tentativi');
+  if (pwHash_(pw) !== prop('PERS_HASH')) { c.put('pwfail', String(fails + 1), 900); log_(who, 'password personali sbagliata', '', ''); throw new Error('password_sbagliata'); }
+  c.remove('pwfail');
+}
+function persSetPw_(who, pw, old) {
+  if (who !== DENIS) throw new Error('solo_denis');
+  if (prop('PERS_HASH')) persCheck_(who, old);
+  if (String(pw || '').length < 6) throw new Error('password_corta');
+  P().setProperty('PERS_HASH', pwHash_(pw));
+  log_(who, 'password personali impostata', '', '');
+  return { ok: true };
+}
+function persMove_(who, id, to, pw) {
+  if (who !== DENIS) throw new Error('solo_denis');
+  if (to === 'studio') persCheck_(who, pw);
+  ensureCols_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = sheet_(), v = sh.getDataRange().getValues(), h = v[0];
+    for (let i = 1; i < v.length; i++) if (v[i][h.indexOf('id')] === id) {
+      const before = v[i].slice(), row = v[i].slice();
+      row[h.indexOf('pers')] = to !== 'studio';
+      if (to === 'studio') row[h.indexOf('status')] = 'ok';
+      row[h.indexOf('updatedAt')] = new Date().toISOString(); row[h.indexOf('updatedBy')] = who;
+      sh.getRange(i + 1, 1, 1, h.length).setValues([row]);
+      record_(who, id, snap_(h, before), snap_(h, row), to === 'studio' ? 'spesa personale messa nello studio' : 'spesa messa nei personali');
+      log_(who, to === 'studio' ? 'personale → studio' : 'studio → personale', id, '');
+      const vendor = String(v[i][h.indexOf('vendor')] || ''), k = vkey_(vendor);
+      if (k && !MARKET.test(vendor)) { const L = JSON.parse(prop('VENDOR_USE') || '{}'); L[k] = to === 'studio' ? 'studio' : 'privato'; P().setProperty('VENDOR_USE', JSON.stringify(L)); }
+      fileDoc_(snap_(h, row));
+      return { ok: true };
+    }
+    return { ok: false };
   } finally { lock.releaseLock(); }
 }

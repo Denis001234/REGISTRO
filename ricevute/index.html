@@ -181,6 +181,11 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
 #agChips{flex-direction:column;align-items:stretch}#agChips button{white-space:normal;text-align:left;height:auto;min-height:44px;line-height:1.3;padding:9px 13px;border-radius:14px}
 .aghead{background:#fff;border:2px solid var(--blue);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}.aghead b{font-size:22px;font-weight:800;color:var(--blue)}.aghead span{font-size:13px;color:var(--muted)}
 .aglines{display:flex;flex-direction:column;gap:2px;padding:0 14px 10px 66px;font-size:13px;color:#0f172a;border-bottom:1px solid #f1f5f9}
+.persbtn{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;border-radius:14px;border:1px dashed #94a3b8;background:#f8fafc;padding:0 14px;font-size:15px;cursor:pointer;color:#0f172a}.persbtn b{flex:1;text-align:left}
+#persBox{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}
+#persBox input{height:50px;border-radius:12px;border:1px solid var(--line);padding:0 12px;font-size:16px}
+#persBox .pr{display:flex;gap:10px;align-items:center;border-bottom:1px solid #f1f5f9;padding:8px 0}#persBox .pr div{flex:1;min-width:0}#persBox .pr small{display:block;color:var(--muted);font-size:12px}
+#persBox .pr button{border:1px solid var(--blue);color:var(--blue);background:#fff;border-radius:10px;min-height:40px;padding:0 10px;font-weight:600;cursor:pointer}
 .agsave{background:none;border:none;color:var(--blue);font-weight:600;font-size:14px;cursor:pointer;padding:10px}
 </style>
 </head>
@@ -276,6 +281,7 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
       <a id="mailLink" class="link hide" target="_blank" rel="noopener" href="#" style="text-decoration:none"></a>
       <button class="primary" id="save" data-t="save">Salva nell'archivio</button>
       <button class="secondary hide danger" id="del" data-t="delete">Storna</button>
+      <button class="secondary hide" id="toPers" type="button">🔒 <span id="toPersT">Spesa personale (solo Denis)</span></button>
       <div class="grid3 hide" id="docOut"><button class="secondary" id="dPrint" data-t="oPrint">Stampa</button><button class="secondary" id="dPdf" data-t="oPdf">Scarica PDF</button><button class="secondary" id="dShare" data-t="oShare">Invia</button></div>
       <div id="histBox" class="list hide" style="padding:6px 14px"><span class="label" data-t="history">Cronologia</span><div id="hist"></div></div>
     </main>
@@ -291,6 +297,8 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
         <button data-f="fattura" data-t="tFat">Fattura pagata</button>
       </div>
       <div class="chips" id="catChips"></div>
+      <button class="persbtn hide" id="persBtn" type="button"><span>🔒</span><b id="persT">Personali</b><span id="persN" class="mono"></span></button>
+      <div id="persBox" class="hide"></div>
       <div class="field" style="background:#fff;border:1px solid var(--line);border-radius:14px"><label for="archMonth" data-t="month">Mese</label><input id="archMonth" type="month" class="mono"></div>
       <div class="list" id="archList"></div><div class="xbar hide" id="archX"></div>
     </main>
@@ -352,6 +360,6 @@ nav.tabs .in{grid-template-columns:repeat(5,minmax(0,1fr))!important}
 <button id="shareReady" class="shareready hide" data-t="oShareReady">Pronto: tocca qui per inviare</button>
 <div id="printArea"></div>
 <script src="config.js?v=8"></script>
-<script src="app.js?v=17"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>
