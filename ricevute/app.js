@@ -151,9 +151,9 @@ function readCard(){const d=editing;d.vendor=$("#fVendor").value.trim();d.client
 async function saveCard(extra){
   readCard();const d=Object.assign(editing,extra||{});
   if(d.total==null){toast(t("needTotal"));$("#fTotal").focus();return}
-  if(d._new&&!d._dupOk&&d.number){const same=docs.find(x=>!x.deleted&&x.type===d.type&&x.number&&norm(x.number)===norm(d.number)&&(d.type==="cliente"||dupKey(x)===dupKey(d)));
+  if(d._new&&!d._dupOk){const same=docs.find(x=>!x.deleted&&x.type===d.type&&(d.number?x.number&&norm(x.number)===norm(d.number)&&(d.type==="cliente"||dupKey(x)===dupKey(d)):dupKey(x)&&dupKey(x)===dupKey(d)&&Math.abs((+x.total||0)-(+d.total||0))<0.005&&x.date===d.date));
     if(same){d._dupOk=true;const info=[same.type==="cliente"?same.client:same.vendor,fmtDate(same.date),eur(same.total)].filter(Boolean).join(" · ");
-      warn(lang==="de"?"Achtung: Beleg Nr. "+d.number+" ist schon im Archiv ("+info+"). Wenn es derselbe ist, nicht speichern. Zum Speichern trotzdem nochmal tippen.":"Attenzione: la ricevuta Nr. "+d.number+" è già nell'archivio ("+info+"). Se è la stessa non salvarla. Per salvarla comunque tocca di nuovo Salva.");
+      warn(lang==="de"?"Achtung: dieser Beleg"+(d.number?" Nr. "+d.number:"")+" ist schon im Archiv ("+info+"). Wenn es derselbe ist, nicht speichern. Zum Speichern trotzdem nochmal tippen.":"Attenzione: questa ricevuta"+(d.number?" Nr. "+d.number:"")+" è già nell'archivio ("+info+"). Se è la stessa non salvarla. Per salvarla comunque tocca di nuovo Salva.");
       toast(lang==="de"?"Schon im Archiv: bitte prüfen":"Già nell'archivio: controlla");window.scrollTo(0,0);return}}
   const btn=$("#save");btn.disabled=true;
   try{

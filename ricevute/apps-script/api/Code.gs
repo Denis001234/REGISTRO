@@ -241,13 +241,30 @@ function saveDoc_(doc, photo, mime, who) {
 /* doppioni: una ricevuta nuova con lo stesso numero di una già attiva (stesso tipo) non si salva senza conferma */
 function dupGuard_(doc) {
   doc = doc || {};
-  const num = String(doc.number || '').trim().toLowerCase(); if (doc.id || !num) return;
+  if (doc.id) return;
+  const num = String(doc.number || '').trim().toLowerCase(), type = doc.type || 'acquisto';
   const nk = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').slice(0, 8);
-  const same = listDocs_(false).filter(d => d.type === (doc.type || 'acquisto') && String(d.number || '').trim().toLowerCase() === num && (doc.type === 'cliente' || nk(d.vendor) === nk(doc.vendor)))[0];
+  const who = d => nk(type === 'cliente' ? d.client : d.vendor), tot = x => Math.round((parseFloat(String(x).replace(',', '.')) || 0) * 100);
+  // stesso numero (e stesso fornitore per gli acquisti), oppure senza numero: stesso cliente/fornitore, stesso importo, stessa data
+  const same = listDocs_(false).filter(d => d.type === type && (num ? String(d.number || '').trim().toLowerCase() === num && (type === 'cliente' || who(d) === who(doc))
+    : who(d) && who(d) === who(doc) && tot(d.total) === tot(doc.total) && String(d.date || '') === String(doc.date || '')))[0];
   if (same) throw new Error('gia_presente: Nr. ' + same.number + ' · ' + [same.client || same.vendor, String(same.date || '').split('-').reverse().join('.'), same.total !== '' ? same.total + ' €' : ''].filter(Boolean).join(' · '));
 }
 /* Pulizia una tantum (Esegui dall'editor): ricevute a cliente attive con lo stesso numero. Tiene quella con la data più vicina al giorno del
    caricamento (la data letta bene), storna le altre (recuperabili con Annulla o nel foglio). prova=true elenca senza toccare niente. */
+/* Pulizia una tantum: stessa foto caricata due volte (stesso tipo, numero, importo, data e fornitore/cliente). Tiene la prima caricata, storna le altre. */
+function provaDoppioniFoto() { return stornaDoppioniFoto(true); }
+function stornaDoppioniFoto(prova) {
+  const nk = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').slice(0, 8);
+  const by = {}, out = [];
+  listDocs_(false).filter(d => d.src === 'foto').forEach(d => { const k = [d.type, nk(d.type === 'cliente' ? d.client : d.vendor), String(d.number || '').trim().toLowerCase(), Math.round((+d.total || 0) * 100), d.date].join('|'); (by[k] = by[k] || []).push(d); });
+  Object.keys(by).filter(k => by[k].length > 1).forEach(k => {
+    const g = by[k].slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    g.slice(1).forEach(d => { out.push([d.type, d.client || d.vendor, 'Nr. ' + (d.number || '-'), d.date, d.total, 'caricata ' + String(d.createdAt).slice(0, 16), 'tengo quella del ' + String(g[0].createdAt).slice(0, 16)].join(' | ')); if (prova !== true) delDoc_(d.id, 'doppioni@sistema'); });
+  });
+  Logger.log((prova === true ? 'PROVA, niente toccato\n' : 'stornate\n') + out.join('\n'));
+  return out;
+}
 function provaDoppioniClienti() { return stornaDoppioniClienti(true); }
 function stornaDoppioniClienti(prova) {
   const L = listDocs_(false).filter(d => d.type === 'cliente' && d.number), by = {}, out = [];
