@@ -94,7 +94,7 @@ function doPost(e) {
       case 'discard': need(); return out_(discard_(req.id, user.email));
       case 'undo': need(); return out_(undoRedo_(user.email, false));
       case 'redo': need(); return out_(undoRedo_(user.email, true));
-      case 'save': need(); return out_({ doc: saveDoc_(req.doc, req.photo, req.mime, user.email) });
+      case 'save': need(); if (!req.dupOk) dupGuard_(req.doc); return out_({ doc: saveDoc_(req.doc, req.photo, req.mime, user.email) });
       case 'del': need(); return out_(delDoc_(req.id, user.email));
       case 'read': need(); {
         const t0 = Date.now();
@@ -237,6 +237,27 @@ function saveDoc_(doc, photo, mime, who) {
     } else log_(who, rec.src === 'foto' ? 'caricato' : 'nuovo', rec.id, [rec.type, rec.client || rec.vendor, rec.number, rec.total].filter(Boolean).join(' · '));
     return rec;
   } finally { lock.releaseLock(); }
+}
+/* doppioni: una ricevuta nuova con lo stesso numero di una già attiva (stesso tipo) non si salva senza conferma */
+function dupGuard_(doc) {
+  doc = doc || {};
+  const num = String(doc.number || '').trim().toLowerCase(); if (doc.id || !num) return;
+  const nk = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '').slice(0, 8);
+  const same = listDocs_(false).filter(d => d.type === (doc.type || 'acquisto') && String(d.number || '').trim().toLowerCase() === num && (doc.type === 'cliente' || nk(d.vendor) === nk(doc.vendor)))[0];
+  if (same) throw new Error('gia_presente: Nr. ' + same.number + ' · ' + [same.client || same.vendor, String(same.date || '').split('-').reverse().join('.'), same.total !== '' ? same.total + ' €' : ''].filter(Boolean).join(' · '));
+}
+/* Pulizia una tantum (Esegui dall'editor): ricevute a cliente attive con lo stesso numero. Tiene quella con la data più vicina al giorno del
+   caricamento (la data letta bene), storna le altre (recuperabili con Annulla o nel foglio). prova=true elenca senza toccare niente. */
+function provaDoppioniClienti() { return stornaDoppioniClienti(true); }
+function stornaDoppioniClienti(prova) {
+  const L = listDocs_(false).filter(d => d.type === 'cliente' && d.number), by = {}, out = [];
+  L.forEach(d => { const k = String(d.number).trim().toLowerCase(); (by[k] = by[k] || []).push(d); });
+  Object.keys(by).filter(k => by[k].length > 1).forEach(k => {
+    const g = by[k].slice().sort((a, b) => Math.abs(new Date(a.createdAt) - new Date(a.date + 'T12:00:00Z')) - Math.abs(new Date(b.createdAt) - new Date(b.date + 'T12:00:00Z')));
+    g.slice(1).forEach(d => { out.push(['Nr. ' + d.number, d.client, d.date, d.total, 'tengo ' + g[0].client + ' ' + g[0].date].join(' | ')); if (prova !== true) delDoc_(d.id, 'doppioni@sistema'); });
+  });
+  Logger.log((prova === true ? 'PROVA, niente toccato\n' : 'stornate\n') + out.join('\n'));
+  return out;
 }
 function delDoc_(id, who) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);

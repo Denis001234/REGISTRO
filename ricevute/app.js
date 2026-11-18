@@ -43,7 +43,7 @@ let gtoken=null;
 (function(){const m=location.hash.match(/#g=([^&]+)/);if(m){gtoken=decodeURIComponent(m[1]);history.replaceState(null,"",location.pathname)}try{token=localStorage.getItem("wi-token")}catch(e){}})();
 function logout(){try{localStorage.removeItem("wi-token")}catch(e){}token=null;user=null;showLogin()}
 const ERRS={non_privata:["Una ricevuta a un cliente non è una spesa privata","Eine Kundenquittung ist keine private Ausgabe"],solo_denis:["Solo Denis può farlo","Nur Denis kann das"],password_mancante:["Prima scegli una password","Bitte zuerst ein Passwort festlegen"],troppi_tentativi:["Troppi tentativi: riprova tra 15 minuti","Zu viele Versuche: in 15 Minuten erneut versuchen"],password_sbagliata:["Password sbagliata","Falsches Passwort"],password_corta:["Almeno 6 caratteri","Mindestens 6 Zeichen"],manca_chiave_gemini:["Manca la chiave Gemini","Der Gemini-Schlüssel fehlt"],chiave_claude_non_valida:["Questa non è una chiave Claude (deve iniziare con sk-ant-)","Das ist kein Claude-Schlüssel (muss mit sk-ant- beginnen)"],chiave_claude_rifiutata:["Claude ha rifiutato la chiave","Claude hat den Schlüssel abgelehnt"],non_autorizzato:["Questo account non è autorizzato","Dieses Konto ist nicht freigeschaltet"],azione_sconosciuta:["Azione sconosciuta","Unbekannte Aktion"],bad_request:["Richiesta non valida","Ungültige Anfrage"]};
-function errText(e){e=String(e||"");const k=e.split(/[:\s]/)[0];if(ERRS[k])return ERRS[k][L()]+(e.length>k.length?" ("+e.slice(k.length).replace(/^[:\s]+/,"").slice(0,120)+")":"");if(/^(gemini|claude)\b/.test(e))return (lang==="de"?"Die KI antwortet gerade nicht: ":"L'intelligenza artificiale non risponde: ")+e.slice(0,120);return e}
+function errText(e){e=String(e||"");if(/^gia_presente/.test(e))return e;const k=e.split(/[:\s]/)[0];if(ERRS[k])return ERRS[k][L()]+(e.length>k.length?" ("+e.slice(k.length).replace(/^[:\s]+/,"").slice(0,120)+")":"");if(/^(gemini|claude)\b/.test(e))return (lang==="de"?"Die KI antwortet gerade nicht: ":"L'intelligenza artificiale non risponde: ")+e.slice(0,120);return e}
 async function api(action,payload){
   let r;
   try{r=await fetch(CFG.API,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(Object.assign({token,action},payload||{}))})}catch(e){throw new Error(t("offline"))}
@@ -151,12 +151,16 @@ function readCard(){const d=editing;d.vendor=$("#fVendor").value.trim();d.client
 async function saveCard(extra){
   readCard();const d=Object.assign(editing,extra||{});
   if(d.total==null){toast(t("needTotal"));$("#fTotal").focus();return}
+  if(d._new&&!d._dupOk&&d.number){const same=docs.find(x=>!x.deleted&&x.type===d.type&&x.number&&norm(x.number)===norm(d.number)&&(d.type==="cliente"||dupKey(x)===dupKey(d)));
+    if(same){d._dupOk=true;const info=[same.type==="cliente"?same.client:same.vendor,fmtDate(same.date),eur(same.total)].filter(Boolean).join(" · ");
+      warn(lang==="de"?"Achtung: Beleg Nr. "+d.number+" ist schon im Archiv ("+info+"). Wenn es derselbe ist, nicht speichern. Zum Speichern trotzdem nochmal tippen.":"Attenzione: la ricevuta Nr. "+d.number+" è già nell'archivio ("+info+"). Se è la stessa non salvarla. Per salvarla comunque tocca di nuovo Salva.");
+      toast(lang==="de"?"Schon im Archiv: bitte prüfen":"Già nell'archivio: controlla");window.scrollTo(0,0);return}}
   const btn=$("#save");btn.disabled=true;
   try{
-    const payload={doc:{id:d.id,type:d.type,art:d.art,client:d.client,vendor:d.vendor,number:d.number,date:d.date,total:d.total,rate:d.rate,cat:d.cat,due:d.due,iban:d.iban,note:d.note,status:d.status==="confirm"&&!extra?"confirm":(extra?"ok":d.status),priv:!!d.priv}};
+    const payload={dupOk:!!d._dupOk,doc:{id:d.id,type:d.type,art:d.art,client:d.client,vendor:d.vendor,number:d.number,date:d.date,total:d.total,rate:d.rate,cat:d.cat,due:d.due,iban:d.iban,note:d.note,status:d.status==="confirm"&&!extra?"confirm":(extra?"ok":d.status),priv:!!d.priv}};
     if(d._new&&d._blob){payload.photo=await blobToB64(d._blob);payload.mime=d._mime}
     await api("save",payload);toast(d._new?t("saved"):t("updated"));editing=null;await load();show("home");
-  }catch(e){if(e.message!=="login")toast(e.message)}finally{btn.disabled=false}
+  }catch(e){if(/^gia_presente/.test(e.message)){d._dupOk=true;const info=e.message.replace(/^gia_presente[:\s]*/,"");warn(lang==="de"?"Achtung: dieser Beleg ist schon im Archiv ("+info+"). Wenn es derselbe ist, nicht speichern. Zum Speichern trotzdem nochmal tippen.":"Attenzione: questa ricevuta è già nell'archivio ("+info+"). Se è la stessa non salvarla. Per salvarla comunque tocca di nuovo Salva.");window.scrollTo(0,0)}else if(e.message!=="login")toast(e.message)}finally{btn.disabled=false}
 }
 $("#save").onclick=()=>saveCard();
 $("#notDup").onclick=()=>{$("#fNote").value=($("#fNote").value.trim()?$("#fNote").value.trim()+" · ":"")+NOTDUP;saveCard()};
