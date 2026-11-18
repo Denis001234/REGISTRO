@@ -41,6 +41,7 @@ Ruoli: `admin` (tutto), `viewer` (sola lettura, niente documenti privati). Le sc
   link "email originale" solo verso mail/drive/docs.google.com, chi è in sola lettura non vede foto e cronologia dei documenti privati,
   firma del token confrontata a tempo costante, le email e l'archivio sono trattati dall'AI solo come dati, librerie PDF/Excel servite dall'app stessa (`lib/`, niente CDN),
   utenti solo nella proprietà `USERS` (nessuna email nel codice).
+- Fatture via email su info da un mittente mai visto: entrano "da confermare" con la nota "mittente nuovo". Confermando (Studio) il mittente diventa conosciuto. Impronte cifrate nella scheda nascosta `Mittenti`, riempita al primo avvio con chi ha già scritto a info.
 - Nota privacy: Gemini gratuito può usare i contenuti per migliorare i servizi Google. Per la versione definitiva valutare un'alternativa.
 
 ## Installazione

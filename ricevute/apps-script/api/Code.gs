@@ -22,6 +22,26 @@ const P = () => PropertiesService.getScriptProperties();
 function cell_(v) { return typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? "'" + v : v; }
 function row_(a) { return a.map(cell_); }
 function same_(a, b) { a = String(a); b = String(b); if (a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; }
+function addr_(from) { const s = String(from || ''), m = s.match(/<([^>]+)>/); return (m ? m[1] : s).trim().toLowerCase(); }
+function fromHash_(a) { return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature('from:' + addr_(a), prop('SECRET'))).slice(0, 22); }
+// Mittenti conosciuti: impronte cifrate nella scheda "Mittenti" del Foglio. Al primo uso si riempie con chi ha già scritto a info (email già archiviate).
+function knownSheet_() {
+  const ss = SpreadsheetApp.openById(prop('SHEET_ID'));
+  let k = ss.getSheetByName('Mittenti');
+  if (k) return k;
+  k = ss.insertSheet('Mittenti'); k.appendRow(['impronta', 'quando']); k.hideSheet();
+  const seen = {}, now = new Date().toISOString(), rows = [];
+  GmailApp.getMessagesForThreads(GmailApp.search('label:Ricevute-Archiviata', 0, 500)).forEach(ms => ms.forEach(m => { const h = fromHash_(m.getFrom()); if (!seen[h]) { seen[h] = 1; rows.push([h, now]); } }));
+  if (rows.length) k.getRange(2, 1, rows.length, 2).setValues(rows.map(row_));
+  log_('sicurezza', 'mittenti conosciuti', '', rows.length + ' mittenti dalle email già archiviate');
+  return k;
+}
+function knownFrom_(from) {
+  if (!addr_(from)) return false;
+  if (!knownFrom_.set) { knownFrom_.set = {}; const k = knownSheet_(); if (k.getLastRow() > 1) k.getRange(2, 1, k.getLastRow() - 1, 1).getValues().forEach(r => knownFrom_.set[r[0]] = 1); }
+  return !!knownFrom_.set[fromHash_(from)];
+}
+function addKnown_(a) { if (knownFrom_(a)) return; const h = fromHash_(a); knownSheet_().appendRow(row_([h, new Date().toISOString()])); knownFrom_.set[h] = 1; }
 function mailUrl_(u) { u = String(u || ''); return /^https:\/\/(mail\.google\.com|drive\.google\.com|docs\.google\.com)\//.test(u) ? u.slice(0, 500) : ''; }
 const prop = k => P().getProperty(k);
 
@@ -195,6 +215,7 @@ function saveDoc_(doc, photo, mime, who) {
     const row = h.map(k => rec[k] === undefined ? '' : rec[k]);
     if (rowIdx > 0) sh.getRange(rowIdx + 1, 1, 1, h.length).setValues([row_(row)]); else sh.appendRow(row_(row));
     fileDoc_(rec);
+    if (before && before.status === 'confirm' && rec.status === 'ok' && rec.mittente) try { addKnown_(rec.mittente); } catch (e) {}
     if (/@/.test(String(who))) record_(who, rec.id, before ? snap_(h, h.map(k => before[k])) : null, snap_(h, row), (before ? 'modifica' : 'nuovo') + ' · ' + [rec.client || rec.vendor, rec.total !== '' ? rec.total + ' €' : ''].filter(Boolean).join(' · '));
     if (before) {
       const f = x => x === undefined || x === null ? '' : x instanceof Date ? Utilities.formatDate(x, 'Europe/Berlin', 'yyyy-MM-dd') : String(x);
@@ -364,6 +385,7 @@ function storeMailDoc_(doc, msgId, mailUrl, att, status, owner) {
   const rec = Object.assign({ id: Utilities.getUuid(), src: 'email', msgId, mailUrl: mailUrl_(mailUrl), owner, createdAt: now, createdBy: 'email', updatedAt: now, updatedBy: 'email' }, c);
   if (doc.usoNote) rec.note = String(doc.usoNote + (rec.note ? ' · ' + rec.note : '')).slice(0, 500);
   if (doc.uso === 'dubbio') rec.status = 'confirm';
+  if (doc.mittente) rec.mittente = String(doc.mittente).slice(0, 120);
   rec.refs = JSON.stringify((doc.refs || []).map(x => ({ t: String(x && x.t || 'altro').slice(0, 12), v: String(x && x.v || x || '').slice(0, 60) })).filter(x => x.v));
   ensureCols_();
   if (att) { const f = DriveApp.getFolderById(prop('MAIL_ID')).createFile(Utilities.newBlob(att.bytes, att.mime, (rec.date || '') + '_' + att.name)); rec.photoId = f.getId(); rec.mime = att.mime; }
@@ -398,7 +420,10 @@ ${usoPrompt_()}` }];
   if (c4 && privCards_().indexOf(c4) >= 0) return false;  // pagata con la carta privata
   const u = usoOf_(r);
   if (u.uso === 'privato') return false;  // spesa privata: non entra nell'app, nessuna riga, foto o registro (l'email resta nella casella)
-  const doc = { uso: u.uso, usoNote: u.uso === 'studio' ? '' : 'studio o privata? ' + u.perche, refs: Array.isArray(r.refs) ? r.refs.slice(0, 10) : [], type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
+  // sicurezza: una fattura da un mittente mai visto su info non entra come confermata (potrebbe essere finta): va "da confermare"
+  const nuovo = owner === 'info' && status === 'ok' && !knownFrom_(raw.from);
+  if (nuovo) status = 'confirm';
+  const doc = { mittente: addr_(raw.from), uso: u.uso, usoNote: [nuovo ? 'mittente nuovo: controlla che la fattura sia vera' : '', u.uso === 'studio' ? '' : 'studio o privata? ' + u.perche].filter(Boolean).join(' · '), refs: Array.isArray(r.refs) ? r.refs.slice(0, 10) : [], type: r.type === 'fattura' ? 'fattura' : 'acquisto', vendor: r.vendor, date: r.date || raw.date, number: r.number, total: r.total, rate: r.rate, cat: r.category, due: r.due, iban: r.iban, note: r.note };
   return storeMailDoc_(doc, String(raw.msgId), String(raw.mailUrl || ''), raw.att ? { mime: raw.att.mime, bytes: Utilities.base64Decode(raw.att.data), name: raw.att.name } : null, status, owner);
 }
 function collect_(req) {
@@ -691,7 +716,7 @@ function lines_(ids) {
 const DUP_STOP = ['gmbh', 'ltd', 'limited', 'ireland', 'inc', 'kg', 'sub', 'com', 'www', 'paypal', 'europe', 'sarl', 'the', 'und', 'and', 'online', 'shop', 'store', 'services', 'service', 'payment', 'payments', 'zahlung', 'pte', 'llc', 'germany', 'deutschland', 'gbr', 'mbh', 'co'];
 function ensureCols_() {
   const sh = sheet_(), h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  ['refs', 'altre'].forEach(k => { if (h.indexOf(k) < 0) { sh.getRange(1, sh.getLastColumn() + 1).setValue(k); } });
+  ['refs', 'altre', 'mittente'].forEach(k => { if (h.indexOf(k) < 0) { sh.getRange(1, sh.getLastColumn() + 1).setValue(k); } });
 }
 function vtok_(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter(w => w.length >= 3 && DUP_STOP.indexOf(w) < 0 && !/^\d+$/.test(w)); }
 function refsOf_(d) {
