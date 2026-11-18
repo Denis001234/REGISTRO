@@ -36,6 +36,11 @@ Ruoli: `admin` (tutto), `viewer` (sola lettura, niente documenti privati). Le sc
 - Chiave Gemini solo nelle proprietà dello script.
 - L'AI estrae campi fissi e non può fare azioni (niente invii, niente pagamenti).
 - Tutto il testo mostrato nell'app è trattato come testo (niente HTML eseguibile); Content-Security-Policy restrittiva.
+- Controllo del 18/11/2026 (Gitleaks + Semgrep, script `sicurezza/controllo-sicurezza.sh`, da lanciare prima di ogni pubblicazione):
+  testi che cominciano con = + - @ salvati come testo (niente formule nel Foglio o in Excel), il collector accetta solo il token del suo progetto (`COLLECT_AUD`),
+  link "email originale" solo verso mail/drive/docs.google.com, chi è in sola lettura non vede foto e cronologia dei documenti privati,
+  firma del token confrontata a tempo costante, le email e l'archivio sono trattati dall'AI solo come dati, librerie PDF/Excel servite dall'app stessa (`lib/`, niente CDN),
+  utenti solo nella proprietà `USERS` (nessuna email nel codice).
 - Nota privacy: Gemini gratuito può usare i contenuti per migliorare i servizi Google. Per la versione definitiva valutare un'alternativa.
 
 ## Installazione
