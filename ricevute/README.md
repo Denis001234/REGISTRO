@@ -53,6 +53,14 @@ Ruoli: `admin` (tutto), `viewer` (sola lettura, niente documenti privati). Le sc
 5. Inserire i due URL in `config.js`.
 6. Mac mini: Google Drive per desktop con l'account info sincronizza `Backup/` sul disco; da lì una copia su iCloud.
 
+## Documenti (archivio dello studio, dal 18/11/2026)
+
+Interruttore Ricevute | Documenti in alto, solo per amministratori. File: `docs.js`, `docs.css`; API: azioni `dList dPage dGroup dSave dUpdate dDel dPdf dSecRename dAsk dAgent dApply` in `apps-script/api/Code.gs`.
+- Dati separati dalla contabilità: foglio `Documenti Waiblingen Ink · Archivio` e cartella Drive `Waiblingen Ink Documenti/<GbR nuova|GbR vecchia>/<sezione>/` (proprietà `D_SHEET_ID`, `D_FOLDER_ID`, `D_SECTIONS`), creati al primo uso. Mai negli export, mai visibili in sola lettura.
+- Foto lette solo da Claude (mai Gemini). L'app legge ogni pagina, Claude le raggruppa in documenti, il PDF lo crea l'app (jsPDF) e lo manda già pronto.
+- Sezioni dinamiche (Claude ne crea di nuove), GbR vecchia o nuova decisa da Claude, lettere che sembrano private segnalate "da controllare".
+- Promemoria: trigger `dReminders` ogni giorno alle 8, email agli amministratori (non a info) 3, 2, 1 giorno prima e il giorno stesso. Backup del foglio in `Backup/` con il backup notturno.
+
 ## Stato del progetto (11 novembre 2026), per riprendere il lavoro in una chat nuova
 
 Fatto e online:
