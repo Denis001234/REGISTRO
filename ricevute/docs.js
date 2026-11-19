@@ -200,17 +200,26 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
         .finally(() => { it.busy = false; reading--; if (D.batch === b) { if (b.items.every(x => x.info || x.err)) group(); else { if (D.view === "batch") render(); readQueue(); } } });
     }
   }
+  async function thumb(blob) {
+    try { const bmp = await createImageBitmap(blob); const k = Math.min(1, 900 / Math.max(bmp.width, bmp.height)); const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      const b = await new Promise(r => c.toBlob(r, "image/jpeg", 0.6)); return b ? await blobToB64(b) : null; } catch (e) { return null; }
+  }
   async function group() {
-    const b = D.batch; if (!b || b.grouping) return; b.grouping = true; render();
+    const b = D.batch; if (!b || b.grouping) return; b.grouping = true; b.metaDone = 0; b.metaN = 0; b.phase = "group"; render();
     const imgs = b.items.map((x, i) => ({ x, i })).filter(o => o.x.kind === "img");
     let groups = [];
-    try {
-      if (imgs.length) {
-        const j = await api("dGroup", { pages: imgs.map(o => o.x.info || { head: o.x.err ? "pagina non letta" : "" }) });
-        groups = (j.groups || []).map(g => Object.assign(g, { items: g.pages.map(p => imgs[p].i) }));
-        if (j.sections) D.sections = j.sections;
-      }
-    } catch (e) { toast(msg(e)); groups = imgs.map(o => ({ items: [o.i], owner: "nuova", section: "Altro", unsure: true, sender: (o.x.info || {}).sender || "", subject: (o.x.info || {}).subject || "" })); }
+    if (imgs.length) {
+      const pages = imgs.map(o => o.x.info || { head: o.x.err ? "pagina non letta" : "" });
+      let arr = null;
+      try { const th = []; for (const o of imgs) th.push(await thumb(o.x.blob)); const j = await api("dGroup", { pages, thumbs: th }); arr = j.groups; if (j.sections) D.sections = j.sections; }
+      catch (e) { toast(msg(e)); }
+      if (!Array.isArray(arr) || !arr.length) arr = imgs.map((o, k) => [k]);
+      groups = arr.map(g => ({ pagesIdx: g, items: g.map(k => imgs[k].i), owner: "nuova", section: "Altro", unsure: true, sender: (pages[g[0]] || {}).sender || "", subject: (pages[g[0]] || {}).subject || "" }));
+      b.phase = "meta"; b.metaN = groups.length; render();
+      let next = 0;
+      const worker = async () => { while (next < groups.length) { const g = groups[next++]; try { const j = await api("dMeta", { pages: g.pagesIdx.map(k => pages[k]) }); Object.assign(g, j.meta || {}); } catch (e) {} b.metaDone++; if (D.view === "batch") render(); } };
+      await Promise.all([worker(), worker(), worker()]);
+    }
     b.items.forEach((x, i) => { if (x.kind === "pdf") { const p = x.info || {}; groups.push({ items: [i], owner: "nuova", section: "Altro", unsure: true, sender: p.sender || "", date: p.date, subject: p.subject || "", summary: p.summary || "", due: p.due, dueWhat: p.dueWhat, amount: p.amount, ref: (p.refs || [])[0] || null, pdfPages: p.of || 1 }); } });
     groups.forEach(g => { if (g.items.some(i => b.items[i].err)) g.unsure = true; });
     b.groups = groups; b.grouping = false; render();
@@ -251,7 +260,7 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
     const b = D.batch; if (!b) { D.view = "home"; return vHome(); }
     const n = b.items.length, read = b.items.filter(x => x.info || x.err).length;
     const top = backTop(T("Controlla e archivia", "Prüfen und archivieren"), n + " " + T("foto", "Fotos"), "home");
-    if (!b.groups) return top + `<main><div class="dinfo">${esc(b.grouping ? T("Claude sta unendo le pagine in documenti…", "Claude fügt die Seiten zu Dokumenten zusammen…") : T("Claude legge le pagine: " + read + " di " + n, "Claude liest die Seiten: " + read + " von " + n))}</div><div class="dbar"><i style="width:${Math.round((b.grouping ? 1 : read / Math.max(1, n)) * 100)}%"></i></div>
+    if (!b.groups) return top + `<main><div class="dinfo">${esc(!b.grouping ? T("Claude legge le pagine: " + read + " di " + n, "Claude liest die Seiten: " + read + " von " + n) : b.phase === "meta" ? T("Claude ha trovato " + b.metaN + " documenti e ora li descrive: " + b.metaDone + " di " + b.metaN, "Claude hat " + b.metaN + " Dokumente gefunden und beschreibt sie: " + b.metaDone + " von " + b.metaN) : T("Claude riconosce le lettere e unisce le pagine…", "Claude erkennt die Briefe und fügt die Seiten zusammen…"))}</div><div class="dbar"><i style="width:${Math.round((b.grouping ? (b.phase === "meta" ? b.metaDone / Math.max(1, b.metaN) : 0.95) : read / Math.max(1, n)) * 100)}%"></i></div>
 <div class="warn"><span>${esc(T("Tieni l'app aperta e lo schermo acceso finché non hai archiviato.", "App offen und Bildschirm an lassen, bis alles archiviert ist."))}</span></div>
 <div class="drow2"><button type="button" class="dbtn" data-act="cam">${esc(T("+ Altra foto", "+ Weiteres Foto"))}</button><button type="button" class="dbtn" data-act="pick">${esc(T("+ Dalle foto", "+ Aus Fotos"))}</button></div>
 <div class="dthumbs">${b.items.map(x => x.url ? `<img src="${esc(x.url)}" alt="">` : `<span>PDF</span>`).join("")}</div>
