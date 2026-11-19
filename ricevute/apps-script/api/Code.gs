@@ -1365,3 +1365,13 @@ function dBackup_(day) {
   const limit = Date.now() - 1000 * 60 * 60 * 24 * 60;
   const it = folder.getFiles(); while (it.hasNext()) { const f = it.next(), m = f.getName().match(/(\d{4}-\d{2}-\d{2})/); if (m && new Date(m[1] + 'T12:00:00Z').getTime() < limit) driveDel_(f.getId()); }
 }
+
+/* Diagnosi (Esegui dall'editor): risposta grezza di Claude su un documento archiviato */
+function diagnosiDocumenti() {
+  const d = dRows_().filter(x => x.fileId && !x.deleted)[0];
+  const b64 = Utilities.base64Encode(DriveApp.getFileById(d.fileId).getBlob().getBytes());
+  const call = content => { const r = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', { method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-api-key': prop('CLAUDE_KEY'), 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({ model: prop('CLAUDE_MODEL') || CLAUDE_MODEL, max_tokens: 1500, messages: [{ role: 'user', content }] }) }); return r.getResponseCode() + ' ' + r.getContentText().slice(0, 1800); };
+  Logger.log('PDF: ' + call([{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } }, { type: 'text', text: D_PAGE_PROMPT + '\nRispondi solo con il JSON, senza altro testo.' }]));
+  Logger.log('TESTO: ' + call([{ type: 'text', text: 'Rispondi SOLO con JSON {"groups":[[0,1],[2]]}' }]));
+}
