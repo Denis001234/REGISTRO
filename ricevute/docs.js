@@ -24,7 +24,7 @@
   /* ricerca che tollera gli errori di battitura */
   function lev1(a, b) { if (Math.abs(a.length - b.length) > 1) return false; let i = 0, j = 0, e = 0; while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++e > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } } return e + (a.length - i) + (b.length - j) <= 1; }
   function match(d, q) {
-    const hay = norm([d.sender, d.subject, d.summary, d.section, d.ref, d.dueWhat, d.note, OWN[d.owner] && OWN[d.owner](), String(d.date || "").slice(0, 4)].join(" "));
+    const hay = norm([d.sender, d.subject, d.summary, d.section, d.ref, d.dueWhat, d.note, d.tags, OWN[d.owner] && OWN[d.owner](), String(d.date || "").slice(0, 4)].join(" "));
     const words = hay.split(/[^a-z0-9]+/).filter(Boolean);
     return norm(q).split(/\s+/).filter(Boolean).every(t => hay.includes(t) || (t.length >= 4 && words.some(w => lev1(w, t))));
   }
@@ -76,6 +76,9 @@
       d.due && !d.done ? `<span class="dtag ${days(d.due) <= 3 ? "due" : "ok"}">${esc(whenTxt(days(d.due)))}</span>` : ""].join("");
     return `<button type="button" class="dr" data-act="open" data-id="${esc(d.id)}"><span class="m"><b>${esc(d.sender || T("Senza mittente", "Ohne Absender"))}</b><small>${esc([d.subject, d.section].filter(Boolean).join(" · "))}</small></span><span class="s">${esc(fmtDate(d.date))}${tags}</span></button>`;
   }
+  const STOP = new Set(["trova", "trovami", "cerca", "dove", "documento", "documenti", "lettera", "lettere", "della", "dello", "delle", "degli", "quale", "quali", "mostra", "fammi", "vedere", "finde", "suche", "zeig", "zeige", "bitte", "dokument", "dokumente", "brief", "briefe", "von", "der", "die", "das", "und"]);
+  const guess = q => { const w = norm(q).split(/[^a-z0-9]+/).filter(x => x.length >= 4 && !STOP.has(x)); if (!w.length) return [];
+    return live().map(d => ({ d, n: w.filter(t => match(d, t)).length })).filter(x => x.n).sort((a, b) => b.n - a.n || String(b.d.date || "").localeCompare(String(a.d.date || ""))).map(x => x.d).slice(0, 8); };
   const listOf = (l, empty) => l.length ? `<div class="list">${l.map(row).join("")}</div>` : `<div class="dinfo">${esc(empty || T("Nessun documento.", "Keine Dokumente."))}</div>`;
   const ownerChips = () => `<div class="chips">${[["all", T("Tutti", "Alle")], ["nuova", OWN.nuova()], ["vecchia", OWN.vecchia()]].map(([k, l]) => `<button type="button" data-act="owner" data-o="${k}" class="${D.owner === k ? "on" : ""}">${esc(l)}</button>`).join("")}</div>`;
   const secCount = s => byOwner(live()).filter(d => d.section === s).length;
@@ -158,7 +161,8 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
     const ag = D.askMode === "agent";
     let res = "";
     if (D.busy) res = `<div class="dinfo">${esc(T("Ci penso…", "Ich überlege…"))}</div>`;
-    else if (!ag && D.askRes) res = `<div class="dans">${esc(D.askRes.answer)}</div>` + (D.askRes.ids.length ? listOf(D.askRes.ids.map(id => D.docs.find(d => d.id === id)).filter(Boolean)) : "");
+    else if (!ag && D.askRes) { const found = D.askRes.ids.map(id => D.docs.find(d => d.id === id)).filter(Boolean), extra = guess(D.askRes.q).filter(d => found.indexOf(d) < 0);
+      res = `<div class="dans">${esc(D.askRes.answer)}</div>` + (found.length ? listOf(found) : "") + (extra.length ? `<div class="head"><b>${esc(T("Forse cerchi anche", "Vielleicht suchst du auch"))}</b></div>` + listOf(extra.slice(0, 8)) : ""); }
     else if (ag && D.agRes) {
       const l = D.agRes.list, s = D.agRes.set, ch = [s.section ? T("sezione → ", "Bereich → ") + s.section : "", s.owner ? "→ " + OWN[s.owner]() : "", s.done === true ? T("segna come fatto", "als erledigt markieren") : s.done === false ? T("segna come da fare", "wieder offen") : ""].filter(Boolean).join(" · ");
       res = `<div class="head"><b>${esc(D.agRes.title)}</b><small style="color:var(--muted)">${l.length} ${esc(T("documenti", "Dokumente"))}</small></div>` + listOf(l, T("Niente trovato.", "Nichts gefunden.")) +
@@ -341,7 +345,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
       const q = ($("#dAskIn").value || "").trim(); if (!q || D.busy) return;
       D.busy = true; render(); $("#dAskIn").value = q;
       try {
-        if (D.askMode === "ask") { const j = await api("dAsk", { q, lang }); D.askRes = { answer: j.answer, ids: j.ids || [] }; }
+        if (D.askMode === "ask") { const j = await api("dAsk", { q, lang }); D.askRes = { q, answer: j.answer, ids: j.ids || [] }; }
         else { const j = await api("dAgent", { q, lang }); D.agRes = { q, title: j.title, set: j.set || {}, list: runFilter(j.filter || { sections: [] }) }; }
       } catch (er) { toast(msg(er)); }
       D.busy = false; render(); $("#dAskIn").value = q; return;
