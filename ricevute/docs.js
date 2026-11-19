@@ -63,6 +63,7 @@
     home: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 4h10l6 6v10H4z"></path><path d="M14 4v6h6"></path></svg>',
     secs: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"></path></svg>',
     due: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l3 2"></path></svg>',
+    mic: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><path d="M12 18v3"></path></svg>',
     ask: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>'
   };
   const langBtns = () => `<div class="langs"><button type="button" data-act="lang" data-l="it" class="${lang === "it" ? "on" : ""}">IT</button><button type="button" data-act="lang" data-l="de" class="${lang === "de" ? "on" : ""}">DE</button></div>`;
@@ -171,7 +172,7 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
     return `<div class="top"><div class="dtitle"><small>${esc(T("Solo l'archivio documenti", "Nur das Dokumenten-Archiv"))}</small><b>${esc(ag ? T("Fai per me", "Mach für mich") : T("Chiedi", "Fragen"))}</b></div>${langBtns()}</div><main>
 <div class="chips"><button type="button" data-act="mode" data-m="ask" class="${ag ? "" : "on"}">${esc(T("Chiedi", "Fragen"))}</button><button type="button" data-act="mode" data-m="agent" class="${ag ? "on" : ""}">${esc(T("Fai per me", "Mach für mich"))}</button></div>
 <div class="dform"><label>${esc(ag ? T("Cosa devo fare?", "Was soll ich tun?") : T("Cosa vuoi sapere?", "Was möchtest du wissen?"))}<textarea id="dAskIn" maxlength="500" placeholder="${esc(ag ? T("es. sposta tutte le lettere Vodafone in Contratti", "z.B. alle Vodafone-Briefe nach Verträge verschieben") : T("es. quando scade l'assicurazione dello studio?", "z.B. wann läuft die Studio-Versicherung ab?"))}"></textarea></label>
-<button type="button" class="dbtn go" data-act="askgo" ${D.busy ? "disabled" : ""}>${esc(ag ? T("Prepara", "Vorbereiten") : T("Chiedi", "Fragen"))}</button></div>${res}</main>`;
+<div class="drow2"><button type="button" class="dbtn ${D.listening ? "red" : ""}" data-act="mic" aria-pressed="${D.listening ? "true" : "false"}">${ICON.mic} ${esc(D.listening ? T("Sto ascoltando… tocca per fermare", "Ich höre zu… tippen zum Stoppen") : T("Parla", "Sprechen"))}</button><button type="button" class="dbtn go" data-act="askgo" ${D.busy ? "disabled" : ""}>${esc(ag ? T("Prepara", "Vorbereiten") : T("Chiedi", "Fragen"))}</button></div></div>${res}</main>`;
   }
 
   /* ---------- caricamento: foto → lettura → raggruppamento → PDF → archivio ---------- */
@@ -292,7 +293,21 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
     if ($("#dAskIn") && keepAsk) $("#dAskIn").value = keepAsk;
     if (D.view === "home") { renderRes(); const q = $("#dQ"); q && q.addEventListener("input", () => { D.q = q.value; renderRes(); }); }
   }
-  const go = v => { D.view = v; D.sure = null; window.scrollTo(0, 0); render(); };
+  const go = v => { stopMic(); D.view = v; D.sure = null; window.scrollTo(0, 0); render(); };
+  /* voce: si parla, il testo compare nel riquadro, poi si preme Chiedi / Prepara (niente parte da solo) */
+  let rec = null;
+  function stopMic() { if (rec) { try { rec.stop(); } catch (e) {} } }
+  function toggleMic() {
+    if (rec) return stopMic();
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition, box = $("#dAskIn");
+    if (!SR) { if (box) box.focus(); return toast(T("Qui la dettatura dell'app non c'è: usa il microfono della tastiera", "Diktat hier nicht verfügbar: Mikrofon der Tastatur benutzen")); }
+    const base = box && box.value.trim() ? box.value.trim() + " " : "";
+    rec = new SR(); rec.lang = lang === "de" ? "de-DE" : "it-IT"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+    rec.onresult = e => { let t = ""; for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; const b = $("#dAskIn"); if (b) b.value = (base + t).slice(0, 500); };
+    rec.onerror = e => { if (e.error === "not-allowed" || e.error === "service-not-allowed") toast(T("Permetti il microfono all'app nelle impostazioni del telefono", "Bitte Mikrofon für die App in den Einstellungen erlauben")); else if (e.error !== "aborted" && e.error !== "no-speech") toast(T("Non ho capito, riprova", "Nicht verstanden, bitte nochmal")); };
+    rec.onend = () => { rec = null; D.listening = false; const v = $("#dAskIn") ? $("#dAskIn").value : ""; render(); if ($("#dAskIn")) $("#dAskIn").value = v; };
+    try { rec.start(); D.listening = true; const v = box ? box.value : ""; render(); if ($("#dAskIn")) $("#dAskIn").value = v; } catch (e) { rec = null; D.listening = false; toast(T("Microfono non disponibile", "Mikrofon nicht verfügbar")); }
+  }
   function openDoc(id) { D.from = D.view === "doc" ? D.from : D.view; D.cur = id; go("doc"); }
   async function pdfBlob(d) { const j = await api("dPdf", { id: d.id }); if (!j.data) throw new Error(T("PDF non trovato", "PDF nicht gefunden")); const by = Uint8Array.from(atob(j.data), c => c.charCodeAt(0)); return { blob: new Blob([by], { type: "application/pdf" }), name: j.name || "documento.pdf" }; }
   async function update(d, patch) { try { const j = await api("dUpdate", { doc: Object.assign({ id: d.id }, patch) }); Object.assign(d, j.doc); if (j.doc.section && D.sections.indexOf(j.doc.section) < 0) D.sections.push(j.doc.section); toast(T("Salvato ✓", "Gespeichert ✓")); } catch (e) { toast(msg(e)); } render(); }
@@ -340,7 +355,8 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
       } catch (er) { toast(msg(er)); }
       return;
     }
-    if (a === "mode") { D.askMode = el.dataset.m; return render(); }
+    if (a === "mic") return toggleMic();
+    if (a === "mode") { stopMic(); D.askMode = el.dataset.m; return render(); }
     if (a === "askgo") {
       const q = ($("#dAskIn").value || "").trim(); if (!q || D.busy) return;
       D.busy = true; render(); $("#dAskIn").value = q;
