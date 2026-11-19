@@ -247,7 +247,7 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
       if (g.saved) { b.done++; continue; }
       try {
         const p = await pdfOfGroup(g);
-        const j = await api("dSave", { pdf: p.b64, doc: { owner: g.owner, section: g.section, sender: g.sender, date: g.date, subject: g.subject, summary: g.summary, due: g.due, dueWhat: g.dueWhat, amount: g.amount, ref: g.ref, pages: p.pages, private: g.private === true, unsure: g.unsure === true, newSection: g.newSection === true } });
+        const j = await api("dSave", { pdf: p.b64, doc: { owner: g.owner, section: g.section, sender: g.sender, date: g.date, subject: g.subject, summary: g.summary, due: g.due, dueWhat: g.dueWhat, amount: g.amount, ref: g.ref, pages: p.pages, private: g.private === true, unsure: g.unsure === true, newSection: g.newSection === true, oldRule: g.oldRule === true } });
         g.saved = true; saved.push(j.doc); D.docs.push(j.doc);
       } catch (e) { toast(msg(e)); break; }
       b.done++; render();
