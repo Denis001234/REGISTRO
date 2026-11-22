@@ -173,7 +173,9 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
       res = `<div class="dans">${esc(D.askRes.answer)}</div>` + (found.length ? listOf(found) : "") + (extra.length ? `<div class="head"><b>${esc(T("Forse cerchi anche", "Vielleicht suchst du auch"))}</b></div>` + listOf(extra.slice(0, 8)) : ""); }
     else if (ag && D.agRes) {
       const l = D.agRes.list, s = D.agRes.set, ch = [s.section ? T("sezione → ", "Bereich → ") + s.section : "", s.owner ? "→ " + OWN[s.owner]() : "", s.done === true ? T("segna come fatto", "als erledigt markieren") : s.done === false ? T("segna come da fare", "wieder offen") : ""].filter(Boolean).join(" · ");
-      res = `<div class="head"><b>${esc(D.agRes.title)}</b><small style="color:var(--muted)">${l.length} ${esc(T("documenti", "Dokumente"))}</small></div>` + listOf(l, T("Niente trovato.", "Nichts gefunden.")) +
+      res = `<div class="head"><b>${esc(D.agRes.title)}</b><small style="color:var(--muted)">${l.length} ${esc(T("documenti", "Dokumente"))}</small></div>` +
+        (D.agRes.check && l.length ? `<button type="button" class="dbtn ${D.sure === "okall" ? "red" : "go"}" style="min-height:54px;font-size:16px" data-act="okall" ${D.okAll ? "disabled" : ""}>${esc(D.okAll ? T("Archivio " + D.okAll.n + " di " + D.okAll.of + "…", "Archiviere " + D.okAll.n + " von " + D.okAll.of + "…") : D.sure === "okall" ? T("Sicuro? Tocca ancora per archiviare tutti e " + l.length, "Sicher? Nochmal tippen, um alle " + l.length + " zu archivieren") : T("✓ Tutti controllati: archivia tutti e " + l.length, "✓ Alle geprüft: alle " + l.length + " archivieren"))}</button>` : "") +
+        listOf(l, T("Niente trovato.", "Nichts gefunden.")) +
         (ch && l.length ? `<div class="warn"><span>${esc(T("Modifica proposta: ", "Vorgeschlagene Änderung: ") + ch)}</span></div><button type="button" class="dbtn go" data-act="apply">${esc(T("Applica a " + l.length + " documenti", "Auf " + l.length + " Dokumente anwenden"))}</button>` : "");
     }
     return `<div class="top"><div class="dtitle"><small>${esc(T("Solo l'archivio documenti", "Nur das Dokumenten-Archiv"))}</small><b>${esc(ag ? T("Fai per me", "Mach für mich") : T("Chiedi", "Fragen"))}</b></div>${langBtns()}</div><main>
@@ -329,7 +331,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
 <label>${esc(T("Sezione", "Bereich"))}<select id="arSec"><option value="all">${esc(T("Tutte", "Alle"))}</option>${secs.map(s => `<option value="${esc(s)}" ${s === D.arSec ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label></div>
 <button type="button" class="dbtn" data-act="ardir">${esc(dirTxt)}</button></div>
 <div class="search arsearch"><input id="arQ" type="search" value="${esc(D.arQ || "")}" placeholder="${esc(T("Cerca: mittente, oggetto, nome, parola…", "Suchen: Absender, Betreff, Name, Wort…"))}" autocomplete="off" enterkeyhint="search">${D.arQ ? `<button type="button" class="arx" data-act="arclear" aria-label="${esc(T("Cancella", "Löschen"))}">✕</button>` : ""}</div>
-<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 11", "Ordner-Version 11"))}</small></main>`;
+<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 12", "Ordner-Version 12"))}</small></main>`;
   }
   function arRes(l) {
     return `<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
@@ -584,7 +586,16 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     if (a === "sec") { D.sec = el.dataset.s; D.secFilter = "all"; return go("sec"); }
     if (a === "sf") { D.secFilter = el.dataset.f; return render(); }
     if (a === "clearq") { D.q = ""; return render(); }
-    if (a === "check") { D.askMode = "agent"; D.agRes = { title: T("Da controllare", "Zu prüfen"), set: {}, list: live().filter(x => x.status === "check") }; return go("ask"); }
+    if (a === "check") { D.askMode = "agent"; D.agRes = { title: T("Da controllare", "Zu prüfen"), set: {}, check: true, list: live().filter(x => x.status === "check") }; return go("ask"); }
+    if (a === "okall" && D.agRes && D.agRes.check) {
+      const l = D.agRes.list.filter(x => x.status === "check"); if (!l.length || D.okAll) return;
+      if (D.sure !== "okall") { D.sure = "okall"; render(); setTimeout(() => { if (D.sure === "okall") { D.sure = null; render(); } }, 6000); return; }
+      D.sure = null; D.okAll = { n: 0, of: l.length }; render(); let bad = 0;
+      for (const x of l) { try { const j = await api("dUpdate", { doc: { id: x.id, status: "ok" } }); Object.assign(x, j.doc); } catch (er) { bad++; } D.okAll.n++; render(); }
+      D.okAll = null; D.agRes.list = live().filter(x => x.status === "check");
+      toast(bad ? T((l.length - bad) + " archiviati, " + bad + " non riusciti: riprova", (l.length - bad) + " archiviert, " + bad + " fehlgeschlagen: nochmal") : T(l.length + " documenti controllati e archiviati ✓", l.length + " Dokumente geprüft und archiviert ✓"));
+      return bad ? render() : go("home");
+    }
     if (a === "dueall") { D.dueAll = el.dataset.x === "1"; return render(); }
     if (a === "ren" || a === "merge") {
       const to = a === "ren" ? $("#dRen").value.trim() : $("#dMerge").value; if (!to || to === D.sec) return;
