@@ -329,7 +329,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
 <label>${esc(T("Sezione", "Bereich"))}<select id="arSec"><option value="all">${esc(T("Tutte", "Alle"))}</option>${secs.map(s => `<option value="${esc(s)}" ${s === D.arSec ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label></div>
 <button type="button" class="dbtn" data-act="ardir">${esc(dirTxt)}</button></div>
 <div class="search arsearch"><input id="arQ" type="search" value="${esc(D.arQ || "")}" placeholder="${esc(T("Cerca: mittente, oggetto, nome, parola…", "Suchen: Absender, Betreff, Name, Wort…"))}" autocomplete="off" enterkeyhint="search">${D.arQ ? `<button type="button" class="arx" data-act="arclear" aria-label="${esc(T("Cancella", "Löschen"))}">✕</button>` : ""}</div>
-<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 10", "Ordner-Version 10"))}</small></main>`;
+<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 11", "Ordner-Version 11"))}</small></main>`;
   }
   function arRes(l) {
     return `<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
@@ -343,14 +343,14 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     pdfReady = new Promise((ok, ko) => { if (window.pdfjsLib) return ok(window.pdfjsLib); const s = document.createElement("script"); s.src = "lib/pdf.min.js?v=3.11.174"; s.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "lib/pdf.worker.min.js?v=3.11.174"; ok(window.pdfjsLib); } catch (e) { ko(e); } }; s.onerror = () => { pdfReady = null; ko(new Error(T("Visore non caricato, controlla la connessione", "Viewer nicht geladen, Verbindung prüfen"))); }; document.head.appendChild(s); });
     return pdfReady;
   }
-  const pdfDocs = new Map(), pdfWait = new Map();
+  const pdfDocs = new Map(), pdfWait = new Map(), pdfBytes = new Map();
   function getPdf(id) {
     if (pdfDocs.has(id)) { const v = pdfDocs.get(id); pdfDocs.delete(id); pdfDocs.set(id, v); return Promise.resolve(v); }
     if (pdfWait.has(id)) return pdfWait.get(id);
     const p = (async () => {
-      const L = await pdfLib(); const j = await api("dPdf", { id }); if (!j.data) throw new Error(T("PDF non trovato", "PDF nicht gefunden"));
-      const by = Uint8Array.from(atob(j.data), c => c.charCodeAt(0));
-      const doc = await L.getDocument({ data: by, isEvalSupported: false, enableXfa: false }).promise;
+      const L = await pdfLib(); let by = pdfBytes.get(id);
+      if (!by) { const j = await api("dPdf", { id }); if (!j.data) throw new Error(T("PDF non trovato", "PDF nicht gefunden")); by = Uint8Array.from(atob(j.data), c => c.charCodeAt(0)); pdfBytes.set(id, by); while (pdfBytes.size > 8) pdfBytes.delete(pdfBytes.keys().next().value); }
+      const doc = await L.getDocument({ data: by.slice(), isEvalSupported: false, enableXfa: false }).promise;
       pdfDocs.set(id, doc); while (pdfDocs.size > 8) { const k = pdfDocs.keys().next().value; const o = pdfDocs.get(k); pdfDocs.delete(k); try { o.destroy(); } catch (e) {} }
       return doc;
     })();
@@ -400,7 +400,7 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
       V.el.addEventListener("click", vwClick); V.el.addEventListener("change", vwChange);
       let x0 = null, y0 = null;
       V.el.addEventListener("touchstart", e => { if (e.touches.length !== 1 || V.zoom) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
-      V.el.addEventListener("touchend", e => { if (x0 === null || V.zoom) return; const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0; x0 = null; if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3 && !e.target.closest("select,input,.vbar")) vwStep(dx < 0 ? 1 : -1); }, { passive: true });
+      V.el.addEventListener("touchend", e => { if (x0 === null || V.zoom || V.busy) return; const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0; x0 = null; if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3 && !e.target.closest("select,input,.vbar")) vwStep(dx < 0 ? 1 : -1); }, { passive: true });
       document.addEventListener("keydown", e => { if (!V.el || V.el.hidden) return; if (e.target.closest && e.target.closest("input,select,textarea")) return; if (e.key === "ArrowRight") vwStep(1); else if (e.key === "ArrowLeft") vwStep(-1); else if (e.key === "Escape") vwClose(); });
     }
     V.el.hidden = false; document.documentElement.classList.add("vwopen"); vwShow();
@@ -408,10 +408,10 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
   function vwClose() { if (!V.el) return; V.tok++; V.el.hidden = true; V.el.innerHTML = ""; document.documentElement.classList.remove("vwopen"); thWatch(); }
   const vwDoc = () => D.docs.find(x => x.id === V.list[V.i]);
   async function vwStep(dir) {
-    const d = vwDoc(); if (!d) return;
+    const d = vwDoc(); if (!d || V.busy) return;
     if (dir > 0) { if (V.p < V.n) V.p++; else if (V.i < V.list.length - 1) { V.i++; V.p = 1; } else return toast(T("Ultima pagina dell'Ordner", "Letzte Seite im Ordner")); }
     else { if (V.p > 1) V.p--; else if (V.i > 0) { V.i--; V.p = -1; } else return toast(T("Prima pagina dell'Ordner", "Erste Seite im Ordner")); }
-    V.zoom = false; vwShow();
+    V.zoom = false; V.sureDel = null; vwShow();
   }
   function vwShow() {
     const d = vwDoc(); if (!d) return vwClose();
@@ -425,7 +425,9 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
 <button type="button" class="vnav l" data-v="prev" aria-label="${esc(T("Pagina prima", "Vorherige Seite"))}">‹</button><button type="button" class="vnav r" data-v="next" aria-label="${esc(T("Pagina dopo", "Nächste Seite"))}">›</button>
 <div class="vbar vbot"><select id="vSec">${secs.map(s => `<option value="${esc(s)}" ${s === d.section ? "selected" : ""}>${esc(s)}</option>`).join("")}${newOpt(false)}</select>
 <input id="vSecNew" maxlength="40" placeholder="${newPh()}" hidden><button type="button" class="dbtn go" data-v="secsave" hidden>${esc(T("Sposta qui", "Hierher"))}</button>
-<button type="button" class="dbtn" data-v="card">${esc(T("Scheda", "Details"))}</button></div>`;
+<button type="button" class="dbtn" data-v="card">${esc(T("Scheda", "Details"))}</button>
+<div class="vedit"><button type="button" class="dbtn go" data-v="padd">${esc(T("＋ Aggiungi foto qui", "＋ Foto hier einfügen"))}</button><button type="button" class="dbtn" data-v="pdel">${esc(T("Togli pagina", "Seite entfernen"))}</button></div>
+<small class="vhint">${esc(T("Le foto nuove vanno dopo la pagina che stai guardando", "Neue Fotos kommen nach der angezeigten Seite"))}</small></div>`;
     (async () => {
       try {
         const doc = await getPdf(d.id); if (tok !== V.tok) return;
@@ -438,6 +440,59 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     })();
   }
   function vwPreload() { [V.list[V.i + 1], V.list[V.i - 1]].filter(Boolean).forEach(id => getPdf(id).catch(() => {})); }
+  /* aggiungere o togliere pagine di una lettera già archiviata (pdf-lib, MIT, in lib/).
+     Sicuro: prima si salva la versione nuova, solo dopo la vecchia va in "Eliminati" su Drive (recuperabile). */
+  const vwFile = document.createElement("input"); vwFile.type = "file"; vwFile.accept = "image/*"; vwFile.multiple = true; vwFile.hidden = true; document.body.appendChild(vwFile);
+  vwFile.onchange = () => { const f = [...vwFile.files]; vwFile.value = ""; if (f.length) vwEdit("add", f); };
+  async function toJpeg(blob) {
+    if (/^image\/(jpeg|jpg|png)$/i.test(blob.type || "")) return blob;
+    const url = URL.createObjectURL(blob);
+    try { const im = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = url; }); const k = Math.min(1, 1800 / Math.max(im.width, im.height)); const c = document.createElement("canvas"); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); return await new Promise(r => c.toBlob(r, "image/jpeg", 0.85)); }
+    finally { URL.revokeObjectURL(url); }
+  }
+  function vwBusy(on, txt) {
+    V.busy = on; if (!V.el) return;
+    let o = V.el.querySelector(".vbusy"); if (on) { if (!o) { o = document.createElement("div"); o.className = "vbusy"; V.el.appendChild(o); } o.innerHTML = `<span class="spin"></span><b>${esc(txt)}</b>`; } else if (o) o.remove();
+  }
+  async function vwEdit(kind, files) {
+    const d = vwDoc(); if (!d || V.busy) return;
+    if (kind === "del") {
+      if (V.n <= 1) return toast(T("È l'unica pagina: per togliere tutta la lettera apri la Scheda", "Einzige Seite: um den ganzen Brief zu entfernen, Details öffnen"));
+      if (V.sureDel !== d.id + ":" + V.p) { V.sureDel = d.id + ":" + V.p; const b = V.el.querySelector('[data-v="pdel"]'); if (b) { b.textContent = T("Sicuro? Tocca ancora", "Sicher? Nochmal tippen"); b.classList.add("red"); } setTimeout(() => { if (V.sureDel === d.id + ":" + V.p) { V.sureDel = null; const b2 = V.el && V.el.querySelector('[data-v="pdel"]'); if (b2) { b2.textContent = T("Togli pagina", "Seite entfernen"); b2.classList.remove("red"); } } }, 5000); return; }
+      V.sureDel = null;
+    }
+    vwBusy(true, kind === "add" ? T("Aggiungo le foto…", "Füge Fotos hinzu…") : T("Tolgo la pagina…", "Entferne die Seite…"));
+    try {
+      await lib("lib/pdf-lib.min.js?v=1.17.1");
+      const PL = window.PDFLib; let bytes = pdfBytes.get(d.id);
+      if (!bytes) { const j = await api("dPdf", { id: d.id }); if (!j.data) throw new Error(T("PDF non trovato", "PDF nicht gefunden")); bytes = Uint8Array.from(atob(j.data), c => c.charCodeAt(0)); }
+      const pdf = await PL.PDFDocument.load(bytes.slice(), { ignoreEncryption: true });
+      const cur = Math.min(Math.max(V.p, 1), pdf.getPageCount());
+      let showP = cur;
+      if (kind === "del") { pdf.removePage(cur - 1); showP = Math.min(cur, pdf.getPageCount()); }
+      else {
+        const ref = pdf.getPage(cur - 1).getSize(), W = ref.width > ref.height ? 595.28 : Math.max(ref.width, 300), H = ref.width > ref.height ? 841.89 : Math.max(ref.height, 400);
+        let at = cur;
+        for (const f of files) {
+          const jb = await toJpeg(await shrink(f)), ab = new Uint8Array(await new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = ko; r.readAsArrayBuffer(jb); }));
+          const img = /png/i.test(jb.type) ? await pdf.embedPng(ab) : await pdf.embedJpg(ab);
+          const s = Math.min(W / img.width, H / img.height), w = img.width * s, h = img.height * s;
+          const pg = pdf.insertPage(at, [W, H]); pg.drawImage(img, { x: (W - w) / 2, y: (H - h) / 2, width: w, height: h }); at++;
+        }
+        showP = cur + 1;
+      }
+      const out = await pdf.save(), n = pdf.getPageCount();
+      const j = await api("dSave", { pdf: await blobToB64(new Blob([out], { type: "application/pdf" })), doc: { owner: d.owner, section: d.section, sender: d.sender, date: d.date, subject: d.subject, summary: d.summary, due: d.due, dueWhat: d.dueWhat, amount: d.amount, ref: d.ref, note: d.note, tags: d.tags, remind: d.remind, done: d.done === true, pages: n, unsure: d.status === "check" } });
+      const nd = j.doc; let oldGone = true;
+      try { await api("dDel", { id: d.id }); } catch (e) { oldGone = false; }
+      D.docs = D.docs.filter(x => x.id !== d.id); D.docs.push(nd);
+      V.list[V.i] = nd.id; pdfBytes.set(nd.id, new Uint8Array(out)); pdfBytes.delete(d.id); const od = pdfDocs.get(d.id); if (od) { pdfDocs.delete(d.id); try { od.destroy(); } catch (e) {} }
+      TH.delete(d.id); V.n = n; V.p = showP; V._cur = nd.id;
+      toast(oldGone ? (kind === "add" ? T("Foto aggiunte ✓", "Fotos hinzugefügt ✓") : T("Pagina tolta ✓", "Seite entfernt ✓")) : T("Salvato, ma la versione vecchia è rimasta: toglila dalla Scheda", "Gespeichert, alte Version noch da: in den Details entfernen"));
+      vwBusy(false); vwShow(); render();
+    } catch (e) { vwBusy(false); toast(msg(e)); }
+  }
+
   function vwChange(e) {
     if (e.target.id !== "vSec") return;
     const d = vwDoc(), isNew = e.target.value === NEWSEC, inp = $("#vSecNew"), btn = V.el.querySelector('[data-v="secsave"]');
@@ -453,6 +508,9 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
   function vwClick(e) {
     const el = e.target.closest("[data-v]"); if (!el) return;
     const a = el.dataset.v;
+    if (V.busy) return;
+    if (a === "padd") { vwFile.value = ""; return vwFile.click(); }
+    if (a === "pdel") return vwEdit("del");
     if (a === "close") return vwClose();
     if (a === "next") return vwStep(1);
     if (a === "prev") return vwStep(-1);
