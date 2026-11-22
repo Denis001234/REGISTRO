@@ -331,7 +331,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
 <label>${esc(T("Sezione", "Bereich"))}<select id="arSec"><option value="all">${esc(T("Tutte", "Alle"))}</option>${secs.map(s => `<option value="${esc(s)}" ${s === D.arSec ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label></div>
 <button type="button" class="dbtn" data-act="ardir">${esc(dirTxt)}</button></div>
 <div class="search arsearch"><input id="arQ" type="search" value="${esc(D.arQ || "")}" placeholder="${esc(T("Cerca: mittente, oggetto, nome, parola…", "Suchen: Absender, Betreff, Name, Wort…"))}" autocomplete="off" enterkeyhint="search">${D.arQ ? `<button type="button" class="arx" data-act="arclear" aria-label="${esc(T("Cancella", "Löschen"))}">✕</button>` : ""}</div>
-<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 12", "Ordner-Version 12"))}</small></main>`;
+<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 13 · anteprime salvate sul telefono: ", "Ordner-Version 13 · Vorschauen gespeichert: ") + l.filter(d => TH.has(d.id)).length + "/" + l.length)}</small></main>`;
   }
   function arRes(l) {
     return `<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
@@ -371,7 +371,24 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
   const TH = new Map(); let idb = null;
   function thDb() { if (idb) return idb; idb = new Promise(ok => { try { const r = indexedDB.open("wiDocThumbs", 1); r.onupgradeneeded = () => r.result.createObjectStore("t"); r.onsuccess = () => ok(r.result); r.onerror = () => ok(null); } catch (e) { ok(null); } }); return idb; }
   async function thGet(id) { const db = await thDb(); if (!db) return null; return new Promise(ok => { try { const q = db.transaction("t").objectStore("t").get(id); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); } catch (e) { ok(null); } }); }
-  async function thPut(id, u) { const db = await thDb(); if (!db) return; try { db.transaction("t", "readwrite").objectStore("t").put(u, id); } catch (e) {} }
+  /* copia di riserva in localStorage (se IndexedDB sul telefono non tiene) */
+  const LSK = "wiDocThumbs1";
+  const lsGet = () => { try { return JSON.parse(localStorage.getItem(LSK) || "{}") || {}; } catch (e) { return {}; } };
+  function lsPut(id, u) { try { const m = lsGet(); m[id] = u; const ids = new Set(D.docs.map(d => d.id)); Object.keys(m).forEach(k => { if (D.loaded && !ids.has(k)) delete m[k]; }); localStorage.setItem(LSK, JSON.stringify(m)); } catch (e) {} }
+  async function thPut(id, u) { lsPut(id, u); const db = await thDb(); if (!db) return; try { db.transaction("t", "readwrite").objectStore("t").put(u, id); } catch (e) {} }
+  /* all'apertura: tutte le anteprime salvate in memoria con UNA lettura, così l'archivio compare subito già con le foto */
+  let thAllP = null;
+  function thLoadAll() {
+    if (thAllP) return thAllP;
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+    const m = lsGet(); Object.keys(m).forEach(k => { if (m[k] && !TH.has(k)) TH.set(k, m[k]); });
+    thAllP = (async () => {
+      const db = await thDb(); if (!db) return;
+      await new Promise(ok => { try { const st = db.transaction("t").objectStore("t"), r = st.openCursor(); r.onsuccess = () => { const c = r.result; if (c) { if (c.value && !TH.has(c.key)) TH.set(c.key, c.value); c.continue(); } else ok(); }; r.onerror = () => ok(); } catch (e) { ok(); } });
+    })();
+    return thAllP;
+  }
+  thLoadAll().then(() => { if (D.on && D.view === "arch") render(); });
   const thumbHtml = id => TH.get(id) ? `<img src="${esc(TH.get(id))}" alt="">` : `<span class="spin"></span>`;
   const thQ = []; let thRun = 0, thObs = null;
   function thPaint(id) { const u = TH.get(id); if (!u) return; $$('[data-th="' + id.replace(/"/g, "") + '"]').forEach(el => { el.innerHTML = ""; const im = new Image(); im.alt = ""; im.src = u; el.appendChild(im); }); }
@@ -379,7 +396,7 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     while (thRun < 2 && thQ.length) {
       const id = thQ.shift(); thRun++;
       (async () => {
-        try { let u = await thGet(id); if (!u) { const doc = await getPdf(id); u = await pageToUrl(doc, 1, 260, 0.7); thPut(id, u); } TH.set(id, u); thPaint(id); }
+        try { let u = await thGet(id); if (!u) { const doc = await getPdf(id); u = await pageToUrl(doc, 1, 220, 0.62); thPut(id, u); } TH.set(id, u); thPaint(id); }
         catch (e) { $$('[data-th="' + id.replace(/"/g, "") + '"]').forEach(el => { el.innerHTML = '<span class="arno">PDF</span>'; }); }
         thRun--; thPump();
       })();
@@ -530,6 +547,8 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     if ($("#dAskIn") && keepAsk) $("#dAskIn").value = keepAsk;
     if (D.view === "arch") {
       thWatch();
+      /* in sottofondo prepara anche le anteprime che mancano fuori schermo, una volta sola */
+      thLoadAll().then(() => live().forEach(d => { if (!TH.has(d.id) && thQ.indexOf(d.id) < 0) thQ.push(d.id); })).then(thPump);
       const q = $("#arQ"); if (q) q.addEventListener("input", () => { D.arQ = q.value.trim(); const r = $("#arRes"); if (r) { r.innerHTML = arRes(arList()); thWatch(); } const x = box.querySelector(".arx"); if (x && !q.value) x.remove(); else if (!x && q.value) { const b = document.createElement("button"); b.type = "button"; b.className = "arx"; b.dataset.act = "arclear"; b.textContent = "✕"; b.setAttribute("aria-label", T("Cancella", "Löschen")); q.after(b); } });
     }
     if (D.view === "home") { renderRes(); const q = $("#dQ"); q && q.addEventListener("input", () => { D.q = q.value; renderRes(); }); }
