@@ -309,7 +309,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
   function arList() {
     const k = D.arSort, dir = D.arDir, cmpT = (a, b) => String(a || "").localeCompare(String(b || ""), "de", { sensitivity: "base", numeric: true });
     const val = d => k === "up" ? upAt(d) : k === "date" ? d.date : k === "sender" ? d.sender : k === "subject" ? d.subject : k === "section" ? d.section : k === "due" ? d.due : k === "amount" ? d.amount : k === "pages" ? d.pages : "";
-    const l = byOwner(live()).filter(d => D.arSec === "all" || d.section === D.arSec);
+    const l = byOwner(live()).filter(d => (D.arSec === "all" || d.section === D.arSec) && (!D.arQ || match(d, D.arQ)));
     return l.sort((a, b) => {
       const va = val(a), vb = val(b), ea = va === "" || va == null, eb = vb === "" || vb == null;
       if (ea !== eb) return ea ? 1 : -1; /* i vuoti sempre in fondo */
@@ -325,8 +325,12 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
 <div class="dform arbar"><div class="drow2"><label>${esc(T("Ordina per", "Sortieren nach"))}<select id="arSort">${AR_SORTS.map(([v, l]) => `<option value="${v}" ${v === D.arSort ? "selected" : ""}>${esc(l())}</option>`).join("")}</select></label>
 <label>${esc(T("Sezione", "Bereich"))}<select id="arSec"><option value="all">${esc(T("Tutte", "Alle"))}</option>${secs.map(s => `<option value="${esc(s)}" ${s === D.arSec ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label></div>
 <button type="button" class="dbtn" data-act="ardir">${esc(dirTxt)}</button></div>
-<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
-${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class="arcard" data-act="arop" data-i="${i}"><span class="arth" data-th="${esc(d.id)}">${thumbHtml(d.id)}</span><b>${esc(d.sender || T("Senza mittente", "Ohne Absender"))}</b>${d.subject ? `<span class="arsub">${esc(d.subject)}</span>` : ""}${d.summary ? `<span class="arsum">${esc(d.summary)}</span>` : ""}<small>${esc([d.section, (d.pages || 1) + " " + T("pag.", "S.")].filter(Boolean).join(" · "))}</small><small>${esc(T("caricato ", "hochgeladen ") + fmtUp(d))}</small></button>`).join("")}</div>` : `<div class="dinfo">${esc(T("Nessun documento.", "Keine Dokumente."))}</div>`}</main>`;
+<div class="search arsearch"><input id="arQ" type="search" value="${esc(D.arQ || "")}" placeholder="${esc(T("Cerca: mittente, oggetto, nome, parola…", "Suchen: Absender, Betreff, Name, Wort…"))}" autocomplete="off" enterkeyhint="search">${D.arQ ? `<button type="button" class="arx" data-act="arclear" aria-label="${esc(T("Cancella", "Löschen"))}">✕</button>` : ""}</div>
+<div id="arRes">${arRes(l)}</div></main>`;
+  }
+  function arRes(l) {
+    return `<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
+${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class="arcard" data-act="arop" data-i="${i}"><span class="arth" data-th="${esc(d.id)}">${thumbHtml(d.id)}</span><b>${esc(d.sender || T("Senza mittente", "Ohne Absender"))}</b>${d.subject ? `<span class="arsub">${esc(d.subject)}</span>` : ""}${d.summary ? `<span class="arsum">${esc(d.summary)}</span>` : ""}<small>${esc([d.section, (d.pages || 1) + " " + T("pag.", "S.")].filter(Boolean).join(" · "))}</small><small>${esc(T("caricato ", "hochgeladen ") + fmtUp(d))}</small></button>`).join("")}</div>` : `<div class="dinfo">${esc(D.arQ ? T("Niente trovato per questa ricerca.", "Nichts gefunden.") : T("Nessun documento.", "Keine Dokumente."))}</div>`}`;
   }
 
   /* pdf.js caricato solo quando serve */
@@ -460,7 +464,10 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     const keepAsk = $("#dAskIn") ? $("#dAskIn").value : "";
     box.innerHTML = html + (v === "batch" || v === "doc" ? "" : nav());
     if ($("#dAskIn") && keepAsk) $("#dAskIn").value = keepAsk;
-    if (D.view === "arch") thWatch();
+    if (D.view === "arch") {
+      thWatch();
+      const q = $("#arQ"); if (q) q.addEventListener("input", () => { D.arQ = q.value.trim(); const r = $("#arRes"); if (r) { r.innerHTML = arRes(arList()); thWatch(); } const x = box.querySelector(".arx"); if (x && !q.value) x.remove(); else if (!x && q.value) { const b = document.createElement("button"); b.type = "button"; b.className = "arx"; b.dataset.act = "arclear"; b.textContent = "✕"; b.setAttribute("aria-label", T("Cancella", "Löschen")); q.after(b); } });
+    }
     if (D.view === "home") { renderRes(); const q = $("#dQ"); q && q.addEventListener("input", () => { D.q = q.value; renderRes(); }); }
   }
   const go = v => { stopMic(); D.view = v; D.sure = null; window.scrollTo(0, 0); render(); };
@@ -505,6 +512,7 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     const a = el.dataset.act, d = D.docs.find(x => x.id === D.cur), b = D.batch;
     if (a === "go") return go(el.dataset.v);
     if (a === "arop") return vwOpen(+el.dataset.i);
+    if (a === "arclear") { D.arQ = ""; render(); const q = $("#arQ"); if (q) q.focus(); return; }
     if (a === "ardir") { D.arDir = -D.arDir; return render(); }
     if (a === "lang") { const o = $$('.langs button[data-l="' + el.dataset.l + '"]').find(x => !box.contains(x)); if (o) o.click(); return; }
     if (a === "cam" || a === "pick" || a === "pdf") return pickFiles(a);
