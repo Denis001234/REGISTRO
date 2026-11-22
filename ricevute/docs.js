@@ -74,7 +74,7 @@
     return `<nav class="tabs"><div class="in">${it.map(([v, i, l]) => `<button type="button" data-act="go" data-v="${v}" class="${D.view === v ? "on" : ""}">${i}<span>${esc(l)}</span></button>`).join("")}</div></nav>`;
   }
   /* mittente "finto" (vuoto, "Senza mittente", "sconosciuto"...) = mittente mancante */
-  const realSender = x => { const t = String(x == null ? "" : x).trim(); return /^(senza mittente|mittente (non letto|sconosciuto|mancante)|sconosciuto|non (leggibile|letto)|ohne absender|absender (unbekannt|nicht gelesen)|unbekannt|unknown|n\.?\s?[ad]\.?|n\\/a|null|none|undefined|[-–—?.\s]*)$/i.test(t) ? "" : t; };
+  const realSender = x => { const t = String(x == null ? "" : x).trim(); return /^(senza mittente|mittente (non letto|sconosciuto|mancante)|sconosciuto|non (leggibile|letto)|ohne absender|absender (unbekannt|nicht gelesen)|unbekannt|unknown|n\.?\s?[ad]\.?|n\/a|null|none|undefined|[-–—?.\s]*)$/i.test(t) ? "" : t; };
   function row(d) {
     const tags = [d.owner === "vecchia" ? `<span class="dtag old">${esc(OWN.vecchia())}</span>` : "", d.status === "check" ? `<span class="dtag chk">${esc(T("da controllare", "prüfen"))}</span>` : "",
       d.due && !d.done ? `<span class="dtag ${days(d.due) <= 3 ? "due" : "ok"}">${esc(whenTxt(days(d.due)))}</span>` : ""].join("");
