@@ -7,6 +7,10 @@
   const D = { on: false, loaded: false, docs: [], sections: [], view: "home", owner: "all", sec: null, cur: null, secFilter: "all",
     batch: null, q: "", askMode: "ask", askRes: null, agRes: null, busy: false, dueAll: false, sure: null };
   const T = (it, de) => (lang === "de" ? de : it);
+  /* in tedesco: oggetto, riassunto e "cosa fare" dalla traduzione salvata a parte (colonna de); l'italiano originale resta intatto */
+  const tx = (d, k) => (lang === "de" && d && d.de && d.de[k]) ? d.de[k] : (d ? d[k] || "" : "");
+  const SEC_DE = { "Studio e Gewerbe": "Studio und Gewerbe", "Tatuatori": "Tätowierer", "Assicurazioni": "Versicherungen", "Finanzamt e tasse": "Finanzamt und Steuern", "Contratti": "Verträge", "Comune e rifiuti": "Stadt und Abfall", "Banca": "Bank", "Auto": "Auto", "Altro": "Sonstiges" };
+  const secName = x => (lang === "de" && SEC_DE[x]) ? SEC_DE[x] : (x || "");
   const OWN = { nuova: () => T("GbR nuova", "Neue GbR"), vecchia: () => T("GbR vecchia", "Alte GbR") };
   const ERR = { manca_chiave_claude: ["Manca la chiave Claude: inseriscila nelle impostazioni dell'app Ricevute", "Claude-Schlüssel fehlt: in den Einstellungen der Belege-App eintragen"],
     pdf_non_valido: ["Il PDF non è valido", "Das PDF ist ungültig"], nome_sezione: ["Scrivi un nome diverso", "Bitte einen anderen Namen eingeben"],
@@ -24,7 +28,7 @@
   /* ricerca che tollera gli errori di battitura */
   function lev1(a, b) { if (Math.abs(a.length - b.length) > 1) return false; let i = 0, j = 0, e = 0; while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++e > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } } return e + (a.length - i) + (b.length - j) <= 1; }
   function match(d, q) {
-    const hay = norm([d.sender, d.subject, d.summary, d.section, d.ref, d.dueWhat, d.note, d.tags, OWN[d.owner] && OWN[d.owner](), String(d.date || "").slice(0, 4)].join(" "));
+    const hay = norm([d.sender, d.subject, d.summary, d.section, secName(d.section), d.de && d.de.subject, d.de && d.de.summary, d.de && d.de.dueWhat, d.ref, d.dueWhat, d.note, d.tags, OWN[d.owner] && OWN[d.owner](), String(d.date || "").slice(0, 4)].join(" "));
     const words = hay.split(/[^a-z0-9]+/).filter(Boolean);
     return norm(q).split(/\s+/).filter(Boolean).every(t => hay.includes(t) || (t.length >= 4 && words.some(w => lev1(w, t))));
   }
@@ -48,12 +52,25 @@
   sw.addEventListener("click", e => { const b = e.target.closest("button[data-a]"); if (b) setMode(b.dataset.a === "d"); });
   function swLabels() { const b = $$("#appSw button"); b[0].textContent = T("Ricevute", "Belege"); b[1].textContent = T("Documenti", "Dokumente"); }
   const _ra = renderAll; renderAll = function () { _ra(); sw.classList.toggle("dhide", !isAdmin()); swLabels(); if (!isAdmin() && D.on) setMode(false); };
-  const _al = applyLang; applyLang = function () { _al(); swLabels(); if (D.on) render(); };
+  const _al = applyLang; applyLang = function () { _al(); swLabels(); if (D.on) render(); trMissing(); };
 
+  let trRun = false;
+  async function trMissing() {
+    if (trRun || lang !== "de" || !D.loaded) return; trRun = true;
+    try {
+      for (let k = 0; k < 15; k++) {
+        if (!live().some(d => !d.de && (d.subject || d.summary || d.dueWhat))) break;
+        const j = await api("dTr"); (j.docs || []).forEach(x => { const d = D.docs.find(y => y.id === x.id); if (d) d.de = x.de; });
+        if (D.on) render();
+        if (!j.left || !(j.docs || []).length) break;
+      }
+    } catch (e) { /* server non ancora aggiornato o errore: resta l'italiano, niente si rompe */ }
+    trRun = false;
+  }
   async function load() {
     try { const j = await api("dList"); D.docs = j.docs || []; D.sections = j.sections || []; D.loaded = true; }
     catch (e) { if (e.message !== "login") toast(msg(e)); }
-    render();
+    render(); trMissing();
   }
 
   /* ---------- disegno ---------- */
@@ -78,7 +95,7 @@
   function row(d) {
     const tags = [d.owner === "vecchia" ? `<span class="dtag old">${esc(OWN.vecchia())}</span>` : "", d.status === "check" ? `<span class="dtag chk">${esc(T("da controllare", "prüfen"))}</span>` : "",
       d.due && !d.done ? `<span class="dtag ${days(d.due) <= 3 ? "due" : "ok"}">${esc(whenTxt(days(d.due)))}</span>` : ""].join("");
-    return `<button type="button" class="dr" data-act="open" data-id="${esc(d.id)}"><span class="m"><b>${esc(realSender(d.sender) || d.subject || (d.section && d.section !== "Altro" ? d.section : "") || T("Senza mittente", "Ohne Absender"))}</b><small>${esc([d.subject, d.section].filter(Boolean).join(" · "))}</small></span><span class="s">${esc(fmtDate(d.date))}${tags}</span></button>`;
+    return `<button type="button" class="dr" data-act="open" data-id="${esc(d.id)}"><span class="m"><b>${esc(realSender(d.sender) || tx(d, "subject") || (d.section && d.section !== "Altro" ? secName(d.section) : "") || T("Senza mittente", "Ohne Absender"))}</b><small>${esc([tx(d, "subject"), secName(d.section)].filter(Boolean).join(" · "))}</small></span><span class="s">${esc(fmtDate(d.date))}${tags}</span></button>`;
   }
   const STOP = new Set(["trova", "trovami", "cerca", "dove", "documento", "documenti", "lettera", "lettere", "della", "dello", "delle", "degli", "quale", "quali", "mostra", "fammi", "vedere", "finde", "suche", "zeig", "zeige", "bitte", "dokument", "dokumente", "brief", "briefe", "von", "der", "die", "das", "und"]);
   const guess = q => { const w = norm(q).split(/[^a-z0-9]+/).filter(x => x.length >= 4 && !STOP.has(x)); if (!w.length) return [];
@@ -107,7 +124,7 @@
     ${due.length ? `<div class="ddue"><div class="h"><b>${esc(T("Scadenze in arrivo", "Anstehende Fristen"))}</b><button type="button" class="dlink" data-act="go" data-v="due" style="color:var(--orange)">${esc(T("Tutte", "Alle"))}</button></div>${due.map(d => `<button type="button" data-act="open" data-id="${esc(d.id)}"><span><b>${esc(d.sender)}</b> · ${esc(d.dueWhat || d.subject)}</span><span class="w">${esc(whenTxt(days(d.due)))}</span></button>`).join("")}</div>` : ""}
     ${ownerChips()}
     <div class="head"><b>${esc(T("Sezioni", "Bereiche"))}</b><small style="color:var(--muted);font-size:12px">${esc(T("le crea anche Claude", "Claude legt auch neue an"))}</small></div>
-    <div class="dsecs">${allSections().map(s => `<button type="button" data-act="sec" data-s="${esc(s)}"><b>${esc(s)}</b><small>${esc(nDoc(secCount(s)))}</small></button>`).join("")}</div>
+    <div class="dsecs">${allSections().map(s => `<button type="button" data-act="sec" data-s="${esc(s)}"><b>${esc(secName(s))}</b><small>${esc(nDoc(secCount(s)))}</small></button>`).join("")}</div>
     ${!D.loaded ? `<div class="dinfo">${esc(T("Carico…", "Lädt…"))}</div>` : ""}
   </div>
 </main>`;
@@ -120,28 +137,28 @@
     el.innerHTML = `<div class="head"><b>${l.length} ${esc(T("risultati", "Ergebnisse"))}</b><button type="button" class="dlink" data-act="clearq">${esc(T("Annulla", "Abbrechen"))}</button></div>` + listOf(l, T("Niente trovato.", "Nichts gefunden."));
   }
   function vSecs() {
-    return backTop(T("Sezioni", "Bereiche"), T("Tocca per aprire, rinominare o unire", "Tippen zum Öffnen, Umbenennen oder Zusammenlegen"), "home") + `<main>${ownerChips()}<div class="list">${allSections().map(s => `<button type="button" class="dr" data-act="sec" data-s="${esc(s)}"><span class="m"><b>${esc(s)}</b></span><span class="s">${secCount(s)}</span></button>`).join("")}</div></main>`;
+    return backTop(T("Sezioni", "Bereiche"), T("Tocca per aprire, rinominare o unire", "Tippen zum Öffnen, Umbenennen oder Zusammenlegen"), "home") + `<main>${ownerChips()}<div class="list">${allSections().map(s => `<button type="button" class="dr" data-act="sec" data-s="${esc(s)}"><span class="m"><b>${esc(secName(s))}</b></span><span class="s">${secCount(s)}</span></button>`).join("")}</div></main>`;
   }
   function vSec() {
     const all = byOwner(live().filter(d => d.section === D.sec));
     const years = [...new Set(all.map(d => String(d.date || "").slice(0, 4)).filter(Boolean))].sort().reverse();
     const f = D.secFilter, l = sortDate(all.filter(d => f === "all" ? true : f === "due" ? d.due && !d.done : String(d.date || "").startsWith(f)));
     const others = allSections().filter(s => s !== D.sec);
-    return backTop(D.sec, nDoc(all.length), "secs") + `<main>${ownerChips()}
+    return backTop(secName(D.sec), nDoc(all.length), "secs") + `<main>${ownerChips()}
 <div class="chips">${[["all", T("Tutti", "Alle")], ["due", T("Con scadenza", "Mit Frist")]].concat(years.map(y => [y, y])).map(([k, l2]) => `<button type="button" data-act="sf" data-f="${esc(k)}" class="${f === k ? "on" : ""}">${esc(l2)}</button>`).join("")}</div>
 ${listOf(l)}
 <div class="dform"><label>${esc(T("Rinomina la sezione", "Bereich umbenennen"))}<input id="dRen" value="${esc(D.sec)}" maxlength="40"></label><button type="button" class="dbtn" data-act="ren">${esc(T("Rinomina", "Umbenennen"))}</button>
-${others.length ? `<label>${esc(T("Unisci con un'altra sezione", "Mit anderem Bereich zusammenlegen"))}<select id="dMerge">${others.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("")}</select></label><button type="button" class="dbtn" data-act="merge">${esc(T("Unisci", "Zusammenlegen"))}</button>` : ""}</div></main>`;
+${others.length ? `<label>${esc(T("Unisci con un'altra sezione", "Mit anderem Bereich zusammenlegen"))}<select id="dMerge">${others.map(s => `<option value="${esc(s)}">${esc(secName(s))}</option>`).join("")}</select></label><button type="button" class="dbtn" data-act="merge">${esc(T("Unisci", "Zusammenlegen"))}</button>` : ""}</div></main>`;
   }
   function vDoc() {
     const d = D.docs.find(x => x.id === D.cur); if (!d) { D.view = "home"; return vHome(); }
     const rem = Array.isArray(d.remind) ? d.remind : [3, 2, 1];
-    const secOpts = allSections().map(s => `<option value="${esc(s)}" ${s === d.section ? "selected" : ""}>${esc(s)}</option>`).join("");
+    const secOpts = allSections().map(s => `<option value="${esc(s)}" ${s === d.section ? "selected" : ""}>${esc(secName(s))}</option>`).join("");
     return backTop(d.sender || T("Documento", "Dokument"), (d.pages || 1) + " " + T("pagine", "Seiten") + " · PDF", D.from || "home") + `<main>
 ${d.status === "check" ? `<div class="warn"><span>${esc(d.note || T("Claude non era sicuro: controlla GbR, sezione e dati.", "Claude war unsicher: GbR, Bereich und Daten prüfen."))}</span></div><div class="drow2"><button type="button" class="dbtn go" data-act="okdoc">${esc(T("Va bene così", "Passt so"))}</button><button type="button" class="dbtn red" data-act="del">${esc(D.sure === d.id ? T("Sicuro? Tocca ancora", "Sicher? Nochmal tippen") : T("Toglila dall'archivio", "Aus dem Archiv nehmen"))}</button></div>` : ""}
 <div class="drow3"><button type="button" class="dbtn go" data-act="openpdf">${esc(T("Apri PDF", "PDF öffnen"))}</button><button type="button" class="dbtn" data-act="share">${esc(T("Condividi", "Teilen"))}</button><button type="button" class="dbtn" data-act="dlpdf">${esc(T("Scarica", "Laden"))}</button></div>
-${d.summary ? `<div class="dinfo"><b>${esc(T("In breve", "Kurz gesagt"))}</b><br>${esc(d.summary)}</div>` : ""}
-${d.due ? `<div class="ddue"><div class="h"><b>${esc(T("Scadenza", "Frist"))} ${esc(fmtDate(d.due))}</b><span class="w">${esc(d.done ? T("fatto", "erledigt") : whenTxt(days(d.due)))}</span></div><span style="font-size:13px">${esc(d.dueWhat || "")}</span>
+${tx(d, "summary") ? `<div class="dinfo"><b>${esc(T("In breve", "Kurz gesagt"))}</b><br>${esc(tx(d, "summary"))}</div>` : ""}
+${d.due ? `<div class="ddue"><div class="h"><b>${esc(T("Scadenza", "Frist"))} ${esc(fmtDate(d.due))}</b><span class="w">${esc(d.done ? T("fatto", "erledigt") : whenTxt(days(d.due)))}</span></div><span style="font-size:13px">${esc(tx(d, "dueWhat"))}</span>
 <div class="drem">${[3, 2, 1].map(n => `<button type="button" data-act="rem" data-n="${n}" class="${rem.indexOf(n) >= 0 ? "on" : ""}" aria-pressed="${rem.indexOf(n) >= 0}">${esc(n === 1 ? T("1 giorno prima", "1 Tag vorher") : T(n + " giorni", n + " Tage"))}</button>`).join("")}</div>
 <span style="font-size:12px;color:var(--orange)">${esc(T("Email a Denis e Linda alle 8 di mattina, anche il giorno stesso", "E-Mail an Denis und Linda um 8 Uhr, auch am Tag selbst"))}</span>
 <button type="button" class="dbtn ${d.done ? "" : "go"}" data-act="done">${esc(d.done ? T("Segna come da fare", "Wieder offen") : T("Fatto / pagato: basta avvisi", "Erledigt / bezahlt: keine Erinnerungen"))}</button></div>` : ""}
@@ -149,11 +166,11 @@ ${d.due ? `<div class="ddue"><div class="h"><b>${esc(T("Scadenza", "Frist"))} ${
 <label>${esc(T("GbR", "GbR"))}<select id="fOwner"><option value="nuova" ${d.owner !== "vecchia" ? "selected" : ""}>${esc(OWN.nuova())}</option><option value="vecchia" ${d.owner === "vecchia" ? "selected" : ""}>${esc(OWN.vecchia())}</option></select></label>
 <label>${esc(T("Sezione", "Bereich"))}<select id="fSection">${secOpts}${newOpt(false)}</select><input id="fSectionNew" maxlength="40" placeholder="${newPh()}" hidden></label>
 <label>${esc(T("Mittente", "Absender"))}<input id="fSender" value="${esc(d.sender || "")}" maxlength="100"></label>
-<label>${esc(T("Oggetto", "Betreff"))}<input id="fSubject" value="${esc(d.subject || "")}" maxlength="160"></label>
+<label>${esc(T("Oggetto", "Betreff"))}<input id="fSubject" value="${esc(tx(d, "subject"))}" maxlength="160"></label>
 <div class="drow2"><label>${esc(T("Data lettera", "Briefdatum"))}<input id="fDate" type="date" value="${esc(d.date || "")}"></label><label>${esc(T("Scadenza", "Frist"))}<input id="fDue" type="date" value="${esc(d.due || "")}"></label></div>
-<label>${esc(T("Cosa fare entro la scadenza", "Was bis zur Frist zu tun ist"))}<input id="fDueWhat" value="${esc(d.dueWhat || "")}" maxlength="120"></label>
+<label>${esc(T("Cosa fare entro la scadenza", "Was bis zur Frist zu tun ist"))}<input id="fDueWhat" value="${esc(tx(d, "dueWhat"))}" maxlength="120"></label>
 <div class="drow2"><label>${esc(T("Importo €", "Betrag €"))}<input id="fAmount" inputmode="decimal" value="${esc(d.amount === undefined ? "" : d.amount)}"></label><label>${esc(T("Riferimento", "Aktenzeichen"))}<input id="fRef" value="${esc(d.ref || "")}" maxlength="120"></label></div>
-<label>${esc(T("Riassunto", "Zusammenfassung"))}<textarea id="fSummary" maxlength="800">${esc(d.summary || "")}</textarea></label>
+<label>${esc(T("Riassunto", "Zusammenfassung"))}<textarea id="fSummary" maxlength="800">${esc(tx(d, "summary"))}</textarea></label>
 <button type="button" class="dbtn go" data-act="save">${esc(T("Salva modifiche", "Änderungen speichern"))}</button>
 </div>
 ${d.status !== "check" ? `<button type="button" class="dbtn red" data-act="del">${esc(D.sure === d.id ? T("Sicuro? Tocca ancora", "Sicher? Nochmal tippen") : T("Elimina (resta recuperabile in Drive)", "Löschen (in Drive wiederherstellbar)"))}</button>` : ""}
@@ -270,7 +287,7 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
       if (g.saved) { b.done++; continue; }
       try {
         const p = await pdfOfGroup(g);
-        const j = await api("dSave", { pdf: p.b64, doc: { owner: g.owner, section: g.section, sender: realSender(g.sender) || (g.userSec && g.section !== "Altro" ? g.section : ""), date: g.date, subject: g.subject, summary: g.summary, due: g.due, dueWhat: g.dueWhat, amount: g.amount, ref: g.ref, pages: p.pages, private: g.private === true, unsure: g.unsure === true, newSection: g.newSection === true, oldRule: g.oldRule === true } });
+        const j = await api("dSave", { pdf: p.b64, doc: { owner: g.owner, section: g.section, sender: realSender(g.sender) || (g.userSec && g.section !== "Altro" ? g.section : ""), date: g.date, subject: g.subject, summary: g.summary, de: g.de || null, due: g.due, dueWhat: g.dueWhat, amount: g.amount, ref: g.ref, pages: p.pages, private: g.private === true, unsure: g.unsure === true, newSection: g.newSection === true, oldRule: g.oldRule === true } });
         g.saved = true; saved.push(j.doc); D.docs.push(j.doc);
       } catch (e) { toast(msg(e)); break; }
       b.done++; render();
@@ -293,9 +310,9 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
 ${b.groups.map((g, gi) => `<div class="dgrp ${g.private ? "priv" : ""}">
 ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'archivio è per lo studio. Decidi tu.", "Sieht nach einem PRIVATEN Brief aus: das Archiv ist fürs Studio. Du entscheidest."))}</span></div>` : ""}
 <div class="dthumbs">${g.items.map(i => b.items[i].url ? `<img src="${esc(b.items[i].url)}" alt="">` : `<span>PDF</span>`).join("")}</div>
-<div><b>${esc(g.sender || T("Mittente non letto", "Absender nicht gelesen"))}</b> <span class="dtag ok">${g.items.length} ${esc(T("pag.", "S."))}</span>${g.unsure ? ` <span class="dtag chk">${esc(T("da controllare", "prüfen"))}</span>` : ""}${g.newSection ? ` <span class="dtag ok">${esc(T("nuova sezione", "neuer Bereich"))}</span>` : ""}<br><small style="color:var(--muted)">${esc([g.subject, g.due ? T("scadenza ", "Frist ") + fmtDate(g.due) : ""].filter(Boolean).join(" · "))}</small></div>
+<div><b>${esc(g.sender || T("Mittente non letto", "Absender nicht gelesen"))}</b> <span class="dtag ok">${g.items.length} ${esc(T("pag.", "S."))}</span>${g.unsure ? ` <span class="dtag chk">${esc(T("da controllare", "prüfen"))}</span>` : ""}${g.newSection ? ` <span class="dtag ok">${esc(T("nuova sezione", "neuer Bereich"))}</span>` : ""}<br><small style="color:var(--muted)">${esc([(lang === "de" && g.de && g.de.subject) || g.subject, g.due ? T("scadenza ", "Frist ") + fmtDate(g.due) : ""].filter(Boolean).join(" · "))}</small></div>
 <div class="drow2"><label>GbR<select data-act="gown" data-g="${gi}"><option value="nuova" ${g.owner !== "vecchia" ? "selected" : ""}>${esc(OWN.nuova())}</option><option value="vecchia" ${g.owner === "vecchia" ? "selected" : ""}>${esc(OWN.vecchia())}</option></select></label>
-<label>${esc(T("Sezione", "Bereich"))}<select data-act="gsec" data-g="${gi}">${secs.map(s => `<option value="${esc(s)}" ${!g.secNew && s === g.section ? "selected" : ""}>${esc(s)}</option>`).join("")}${newOpt(g.secNew)}</select></label></div>
+<label>${esc(T("Sezione", "Bereich"))}<select data-act="gsec" data-g="${gi}">${secs.map(s => `<option value="${esc(s)}" ${!g.secNew && s === g.section ? "selected" : ""}>${esc(secName(s))}</option>`).join("")}${newOpt(g.secNew)}</select></label></div>
 <input data-act="gsecnew" data-g="${gi}" maxlength="40" placeholder="${newPh()}" value="${esc(g.secNew ? g.section || "" : "")}" ${g.secNew ? "" : "hidden"}>
 <div class="drow3">${gi ? `<button type="button" class="dbtn" data-act="gmerge" data-g="${gi}">${esc(T("Unisci a sopra", "Mit oben"))}</button>` : `<span></span>`}${g.items.length > 1 ? `<button type="button" class="dbtn" data-act="gsplit" data-g="${gi}">${esc(T("Dividi", "Trennen"))}</button>` : `<span></span>`}<button type="button" class="dbtn red" data-act="gdrop" data-g="${gi}">${esc(T("Togli", "Weglassen"))}</button></div>
 </div>`).join("")}
@@ -308,12 +325,12 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
   const AR_SORTS = [["up", () => T("Ultimi caricati", "Zuletzt hochgeladen"), -1], ["date", () => T("Data della lettera", "Briefdatum"), -1], ["sender", () => T("Mittente A-Z", "Absender A-Z"), 1],
     ["subject", () => T("Oggetto A-Z", "Betreff A-Z"), 1], ["section", () => T("Sezione A-Z", "Bereich A-Z"), 1], ["due", () => T("Scadenza", "Frist"), 1], ["amount", () => T("Importo", "Betrag"), -1], ["pages", () => T("Numero di pagine", "Seitenzahl"), -1]];
   if (!D.arSort) { D.arSort = "up"; D.arDir = -1; D.arSec = "all"; }
-  const titleOf = d => realSender(d.sender) || d.subject || (d.section && d.section !== "Altro" ? d.section : "") || T("Senza mittente", "Ohne Absender");
+  const titleOf = d => realSender(d.sender) || tx(d, "subject") || (d.section && d.section !== "Altro" ? secName(d.section) : "") || T("Senza mittente", "Ohne Absender");
   const upAt = d => String(d.createdAt || d.updatedAt || "");
   const fmtUp = d => { const s = upAt(d); if (!s) return ""; const t = new Date(s); if (isNaN(t)) return ""; const p = n => String(n).padStart(2, "0"); return p(t.getDate()) + "/" + p(t.getMonth() + 1) + "/" + String(t.getFullYear()).slice(2) + " " + p(t.getHours()) + ":" + p(t.getMinutes()); };
   function arList() {
     const k = D.arSort, dir = D.arDir, cmpT = (a, b) => String(a || "").localeCompare(String(b || ""), "de", { sensitivity: "base", numeric: true });
-    const val = d => k === "up" ? upAt(d) : k === "date" ? d.date : k === "sender" ? d.sender : k === "subject" ? d.subject : k === "section" ? d.section : k === "due" ? d.due : k === "amount" ? d.amount : k === "pages" ? d.pages : "";
+    const val = d => k === "up" ? upAt(d) : k === "date" ? d.date : k === "sender" ? d.sender : k === "subject" ? tx(d, "subject") : k === "section" ? secName(d.section) : k === "due" ? d.due : k === "amount" ? d.amount : k === "pages" ? d.pages : "";
     const l = byOwner(live()).filter(d => (D.arSec === "all" || d.section === D.arSec) && (!D.arQ || match(d, D.arQ)));
     return l.sort((a, b) => {
       const va = val(a), vb = val(b), ea = va === "" || va == null, eb = vb === "" || vb == null;
@@ -328,14 +345,14 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
     const dirTxt = (["up", "date", "due"].indexOf(D.arSort) >= 0) ? (D.arDir < 0 ? T("↓ dal più recente", "↓ neueste zuerst") : T("↑ dal più vecchio", "↑ älteste zuerst")) : (["amount", "pages"].indexOf(D.arSort) >= 0) ? (D.arDir < 0 ? T("↓ dal più grande", "↓ größte zuerst") : T("↑ dal più piccolo", "↑ kleinste zuerst")) : (D.arDir > 0 ? "A → Z" : "Z → A");
     return `<div class="top"><div class="dtitle"><small>${esc(T("Il tuo Ordner: tocca un'anteprima e scorri", "Dein Ordner: Vorschau antippen und blättern"))}</small><b>${esc(T("Archivio", "Ordner"))}</b></div>${langBtns()}</div><main>${ownerChips()}
 <div class="dform arbar"><div class="drow2"><label>${esc(T("Ordina per", "Sortieren nach"))}<select id="arSort">${AR_SORTS.map(([v, l]) => `<option value="${v}" ${v === D.arSort ? "selected" : ""}>${esc(l())}</option>`).join("")}</select></label>
-<label>${esc(T("Sezione", "Bereich"))}<select id="arSec"><option value="all">${esc(T("Tutte", "Alle"))}</option>${secs.map(s => `<option value="${esc(s)}" ${s === D.arSec ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label></div>
+<label>${esc(T("Sezione", "Bereich"))}<select id="arSec"><option value="all">${esc(T("Tutte", "Alle"))}</option>${secs.map(s => `<option value="${esc(s)}" ${s === D.arSec ? "selected" : ""}>${esc(secName(s))}</option>`).join("")}</select></label></div>
 <button type="button" class="dbtn" data-act="ardir">${esc(dirTxt)}</button></div>
 <div class="search arsearch"><input id="arQ" type="search" value="${esc(D.arQ || "")}" placeholder="${esc(T("Cerca: mittente, oggetto, nome, parola…", "Suchen: Absender, Betreff, Name, Wort…"))}" autocomplete="off" enterkeyhint="search">${D.arQ ? `<button type="button" class="arx" data-act="arclear" aria-label="${esc(T("Cancella", "Löschen"))}">✕</button>` : ""}</div>
-<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 13 · anteprime salvate sul telefono: ", "Ordner-Version 13 · Vorschauen gespeichert: ") + l.filter(d => TH.has(d.id)).length + "/" + l.length)}</small></main>`;
+<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 14 · anteprime salvate sul telefono: ", "Ordner-Version 14 · Vorschauen gespeichert: ") + l.filter(d => TH.has(d.id)).length + "/" + l.length)}</small></main>`;
   }
   function arRes(l) {
     return `<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
-${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class="arcard" data-act="arop" data-i="${i}"><span class="arth" data-th="${esc(d.id)}">${thumbHtml(d.id)}</span><b>${esc(titleOf(d))}</b>${d.subject ? `<span class="arsub">${esc(d.subject)}</span>` : ""}${d.summary ? `<span class="arsum">${esc(d.summary)}</span>` : ""}<small>${esc([d.section, (d.pages || 1) + " " + T("pag.", "S.")].filter(Boolean).join(" · "))}</small><small>${esc(T("caricato ", "hochgeladen ") + fmtUp(d))}</small></button>`).join("")}</div>` : `<div class="dinfo">${esc(D.arQ ? T("Niente trovato per questa ricerca.", "Nichts gefunden.") : T("Nessun documento.", "Keine Dokumente."))}</div>`}`;
+${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class="arcard" data-act="arop" data-i="${i}"><span class="arth" data-th="${esc(d.id)}">${thumbHtml(d.id)}</span><b>${esc(titleOf(d))}</b>${tx(d, "subject") ? `<span class="arsub">${esc(tx(d, "subject"))}</span>` : ""}${tx(d, "summary") ? `<span class="arsum">${esc(tx(d, "summary"))}</span>` : ""}<small>${esc([secName(d.section), (d.pages || 1) + " " + T("pag.", "S.")].filter(Boolean).join(" · "))}</small><small>${esc(T("caricato ", "hochgeladen ") + fmtUp(d))}</small></button>`).join("")}</div>` : `<div class="dinfo">${esc(D.arQ ? T("Niente trovato per questa ricerca.", "Nichts gefunden.") : T("Nessun documento.", "Keine Dokumente."))}</div>`}`;
   }
 
   /* pdf.js caricato solo quando serve */
@@ -438,11 +455,11 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     const secs = allSections(); if (d.section && secs.indexOf(d.section) < 0) secs.push(d.section);
     const quick = TH.get(d.id) && V.p === 1 ? `<img class="vimg" src="${esc(TH.get(d.id))}" alt="">` : "";
     V.el.innerHTML = `<div class="vbar vtop"><button type="button" class="vx" data-v="close" aria-label="${esc(T("Chiudi", "Schließen"))}">✕</button>
-<div class="vt"><b>${esc(titleOf(d))}</b><small>${esc([d.subject, fmtDate(d.date), d.section].filter(Boolean).join(" · "))}</small>${d.summary ? `<span class="vsum">${esc(d.summary)}</span>` : ""}</div>
+<div class="vt"><b>${esc(titleOf(d))}</b><small>${esc([tx(d, "subject"), fmtDate(d.date), secName(d.section)].filter(Boolean).join(" · "))}</small>${tx(d, "summary") ? `<span class="vsum">${esc(tx(d, "summary"))}</span>` : ""}</div>
 <span class="vc" id="vCount">${esc(T("Pag. ", "S. ") + V.p + "/" + V.n + " · " + T("doc. ", "Dok. ") + (V.i + 1) + "/" + V.list.length)}</span></div>
 <div class="vpage ${V.zoom ? "z" : ""}" data-v="zoom">${quick}<span class="spin" ${quick ? 'style="position:absolute"' : ""}></span></div>
 <button type="button" class="vnav l" data-v="prev" aria-label="${esc(T("Pagina prima", "Vorherige Seite"))}">‹</button><button type="button" class="vnav r" data-v="next" aria-label="${esc(T("Pagina dopo", "Nächste Seite"))}">›</button>
-<div class="vbar vbot"><select id="vSec">${secs.map(s => `<option value="${esc(s)}" ${s === d.section ? "selected" : ""}>${esc(s)}</option>`).join("")}${newOpt(false)}</select>
+<div class="vbar vbot"><select id="vSec">${secs.map(s => `<option value="${esc(s)}" ${s === d.section ? "selected" : ""}>${esc(secName(s))}</option>`).join("")}${newOpt(false)}</select>
 <input id="vSecNew" maxlength="40" placeholder="${newPh()}" hidden><button type="button" class="dbtn go" data-v="secsave" hidden>${esc(T("Sposta qui", "Hierher"))}</button>
 <button type="button" class="dbtn" data-v="card">${esc(T("Scheda", "Details"))}</button>
 <div class="vedit"><button type="button" class="dbtn go" data-v="padd">${esc(T("＋ Aggiungi foto qui", "＋ Foto hier einfügen"))}</button><button type="button" class="dbtn" data-v="pdel">${esc(T("Togli pagina", "Seite entfernen"))}</button></div>
@@ -501,7 +518,7 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
         showP = cur + 1;
       }
       const out = await pdf.save(), n = pdf.getPageCount();
-      const j = await api("dSave", { pdf: await blobToB64(new Blob([out], { type: "application/pdf" })), doc: { owner: d.owner, section: d.section, sender: d.sender, date: d.date, subject: d.subject, summary: d.summary, due: d.due, dueWhat: d.dueWhat, amount: d.amount, ref: d.ref, note: d.note, tags: d.tags, remind: d.remind, done: d.done === true, pages: n, unsure: d.status === "check" } });
+      const j = await api("dSave", { pdf: await blobToB64(new Blob([out], { type: "application/pdf" })), doc: { owner: d.owner, section: d.section, sender: d.sender, date: d.date, subject: d.subject, summary: d.summary, de: d.de || null, due: d.due, dueWhat: d.dueWhat, amount: d.amount, ref: d.ref, note: d.note, tags: d.tags, remind: d.remind, done: d.done === true, pages: n, unsure: d.status === "check" } });
       const nd = j.doc; let oldGone = true;
       try { await api("dDel", { id: d.id }); } catch (e) { oldGone = false; }
       D.docs = D.docs.filter(x => x.id !== d.id); D.docs.push(nd);
@@ -625,7 +642,10 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
       let sec = $("#fSection").value;
       if (sec === NEWSEC) { sec = $("#fSectionNew").value.trim(); if (!sec) { askName(); return $("#fSectionNew").focus(); } }
       const snd = realSender($("#fSender").value) || (sec !== "Altro" ? sec : "");
-      return update(d, { owner: $("#fOwner").value, section: sec, sender: snd, subject: $("#fSubject").value, date: $("#fDate").value, due: $("#fDue").value, dueWhat: $("#fDueWhat").value, amount: $("#fAmount").value, ref: $("#fRef").value, summary: $("#fSummary").value });
+      const base = { owner: $("#fOwner").value, section: sec, sender: snd, date: $("#fDate").value, due: $("#fDue").value, amount: $("#fAmount").value, ref: $("#fRef").value };
+      const texts = { subject: $("#fSubject").value, dueWhat: $("#fDueWhat").value, summary: $("#fSummary").value };
+      if (lang === "de") { const de = {}; ["subject", "dueWhat", "summary"].forEach(k => { if (texts[k] !== tx(d, k)) de[k] = texts[k]; }); if (Object.keys(de).length) base.de = Object.assign({}, d.de || {}, de); return update(d, base); }
+      return update(d, Object.assign(base, texts));
     }
     if (d && a === "okdoc") return update(d, { status: "ok" });
     if (d && a === "done") return update(d, { done: !d.done });
