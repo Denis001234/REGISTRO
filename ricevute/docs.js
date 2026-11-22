@@ -54,9 +54,36 @@
   const _ra = renderAll; renderAll = function () { _ra(); sw.classList.toggle("dhide", !isAdmin()); swLabels(); if (!isAdmin() && D.on) setMode(false); };
   const _al = applyLang; applyLang = function () { _al(); swLabels(); if (D.on) render(); trMissing(); };
 
+  /* traduzioni tedesche già pronte (cifrate in lib/de-cache.js): ognuna si apre solo con id e fileId del documento */
+  let deCacheP = null;
+  function deCacheLoad() {
+    if (deCacheP) return deCacheP;
+    deCacheP = new Promise(ok => { if (window.WI_DE) return ok(window.WI_DE); const sc = document.createElement("script"); sc.src = "lib/de-cache.js?v=1"; sc.onload = () => ok(window.WI_DE || null); sc.onerror = () => ok(null); document.head.appendChild(sc); });
+    return deCacheP;
+  }
+  async function deCacheApply() {
+    try {
+      if (!window.crypto || !crypto.subtle) return;
+      const miss = live().filter(d => !d.de && d.fileId); if (!miss.length) return;
+      const c = await deCacheLoad(); if (!c || !c.e) return;
+      const enc = new TextEncoder(), hex = b => Array.from(new Uint8Array(b), x => x.toString(16).padStart(2, "0")).join(""), un64 = x => Uint8Array.from(atob(x), ch => ch.charCodeAt(0));
+      let n = 0;
+      for (const d of miss) {
+        const e = c.e[hex(await crypto.subtle.digest("SHA-256", enc.encode("wi-de-idx|" + d.id))).slice(0, 32)]; if (!e) continue;
+        try {
+          const [iv, ct] = e.split(".").map(un64);
+          const k = await crypto.subtle.importKey("raw", await crypto.subtle.digest("SHA-256", enc.encode("wi-de-v1|" + d.id + "|" + d.fileId)), "AES-GCM", false, ["decrypt"]);
+          const o = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, k, ct)));
+          if (o && (o.subject || o.summary || o.dueWhat)) { d.de = { subject: String(o.subject || ""), summary: String(o.summary || ""), dueWhat: String(o.dueWhat || "") }; n++; }
+        } catch (er) {}
+      }
+      if (n && D.on) render();
+    } catch (e) {}
+  }
   let trRun = false;
   async function trMissing() {
     if (trRun || lang !== "de" || !D.loaded) return; trRun = true;
+    await deCacheApply();
     try {
       for (let k = 0; k < 15; k++) {
         if (!live().some(d => !d.de && (d.subject || d.summary || d.dueWhat))) break;
@@ -348,7 +375,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
 <label>${esc(T("Sezione", "Bereich"))}<select id="arSec"><option value="all">${esc(T("Tutte", "Alle"))}</option>${secs.map(s => `<option value="${esc(s)}" ${s === D.arSec ? "selected" : ""}>${esc(secName(s))}</option>`).join("")}</select></label></div>
 <button type="button" class="dbtn" data-act="ardir">${esc(dirTxt)}</button></div>
 <div class="search arsearch"><input id="arQ" type="search" value="${esc(D.arQ || "")}" placeholder="${esc(T("Cerca: mittente, oggetto, nome, parola…", "Suchen: Absender, Betreff, Name, Wort…"))}" autocomplete="off" enterkeyhint="search">${D.arQ ? `<button type="button" class="arx" data-act="arclear" aria-label="${esc(T("Cancella", "Löschen"))}">✕</button>` : ""}</div>
-<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 14 · anteprime salvate sul telefono: ", "Ordner-Version 14 · Vorschauen gespeichert: ") + l.filter(d => TH.has(d.id)).length + "/" + l.length)}</small></main>`;
+<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 15 · anteprime salvate sul telefono: ", "Ordner-Version 15 · Vorschauen gespeichert: ") + l.filter(d => TH.has(d.id)).length + "/" + l.length)}</small></main>`;
   }
   function arRes(l) {
     return `<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
