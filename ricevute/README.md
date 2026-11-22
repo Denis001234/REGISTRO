@@ -59,6 +59,8 @@ Interruttore Ricevute | Documenti in alto, solo per amministratori. File: `docs.
 - Dati separati dalla contabilità: foglio `Documenti Waiblingen Ink · Archivio` e cartella Drive `Waiblingen Ink Documenti/<GbR nuova|GbR vecchia>/<sezione>/` (proprietà `D_SHEET_ID`, `D_FOLDER_ID`, `D_SECTIONS`), creati al primo uso. Mai negli export, mai visibili in sola lettura.
 - Foto lette solo da Claude (mai Gemini). L'app legge ogni pagina, Claude le raggruppa in documenti, il PDF lo crea l'app (jsPDF) e lo manda già pronto.
 - Sezioni dinamiche (Claude ne crea di nuove), GbR vecchia o nuova decisa da Claude, lettere che sembrano private segnalate "da controllare".
+- Archivio (22/11/2026): scheda "Archivio" con anteprime (prima pagina, salvate sul telefono in IndexedDB), visore a tutto schermo che scorre pagina per pagina (destra/sinistra) nell'ordine scelto (ultimi caricati, data lettera, mittente, oggetto, sezione, scadenza, importo, pagine), cambio sezione dal visore. PDF disegnati con pdf.js 3.11.174 legacy in `lib/` (eval spento).
+- Sezioni: si può scriverne una nuova a mano (scheda documento, revisione dopo le foto, visore). Se nessuna sezione esistente va bene, la nuova prende il nome del mittente (es. Stadtwerke Waiblingen).
 - Promemoria: trigger `dReminders` ogni giorno alle 8, email agli amministratori (non a info) 3, 2, 1 giorno prima e il giorno stesso. Backup del foglio in `Backup/` con il backup notturno.
 
 ## Stato del progetto (11 novembre 2026), per riprendere il lavoro in una chat nuova

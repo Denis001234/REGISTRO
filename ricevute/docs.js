@@ -61,6 +61,7 @@
     cam: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg>',
     back: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>',
     home: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 4h10l6 6v10H4z"></path><path d="M14 4v6h6"></path></svg>',
+    arch: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="13" height="18" rx="2"></rect><path d="M8 3v18"></path><path d="M20 7v12"></path></svg>',
     secs: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"></path></svg>',
     due: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l3 2"></path></svg>',
     mic: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><path d="M12 18v3"></path></svg>',
@@ -69,7 +70,7 @@
   const langBtns = () => `<div class="langs"><button type="button" data-act="lang" data-l="it" class="${lang === "it" ? "on" : ""}">IT</button><button type="button" data-act="lang" data-l="de" class="${lang === "de" ? "on" : ""}">DE</button></div>`;
   const backTop = (title, sub, to) => `<div class="top"><div style="display:flex;align-items:center;gap:12px;min-width:0"><button type="button" class="dbtn" data-act="go" data-v="${esc(to || "home")}" aria-label="${esc(T("Indietro", "Zurück"))}">${ICON.back}</button><div class="dtitle" style="min-width:0"><b style="font-size:19px">${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</div></div></div>`;
   function nav() {
-    const it = [["home", ICON.home, T("Documenti", "Dokumente")], ["secs", ICON.secs, T("Sezioni", "Bereiche")], ["due", ICON.due, T("Scadenze", "Fristen")], ["ask", ICON.ask, T("Chiedi", "Fragen")]];
+    const it = [["home", ICON.home, T("Documenti", "Dokumente")], ["arch", ICON.arch, T("Archivio", "Ordner")], ["secs", ICON.secs, T("Sezioni", "Bereiche")], ["due", ICON.due, T("Scadenze", "Fristen")], ["ask", ICON.ask, T("Chiedi", "Fragen")]];
     return `<nav class="tabs"><div class="in">${it.map(([v, i, l]) => `<button type="button" data-act="go" data-v="${v}" class="${D.view === v ? "on" : ""}">${i}<span>${esc(l)}</span></button>`).join("")}</div></nav>`;
   }
   function row(d) {
@@ -231,6 +232,13 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
     }
     b.items.forEach((x, i) => { if (x.kind === "pdf") { const p = x.info || {}; groups.push({ items: [i], owner: "nuova", section: "Altro", unsure: true, sender: p.sender || "", date: p.date, subject: p.subject || "", summary: p.summary || "", due: p.due, dueWhat: p.dueWhat, amount: p.amount, ref: (p.refs || [])[0] || null, pdfPages: p.of || 1 }); } });
     groups.forEach(g => { if (g.items.some(i => b.items[i].err)) g.unsure = true; });
+    /* regola di Denis: se nessuna sezione esistente va bene, la sezione nuova si chiama come il mittente (es. Stadtwerke Waiblingen) */
+    groups.forEach(g => {
+      const snd = String(g.sender || "").replace(/[<>\/\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+      if (!snd || !(g.newSection || !g.section || g.section === "Altro")) return;
+      const hit = allSections().find(x => x.toLowerCase() === snd.toLowerCase());
+      g.section = hit || snd; g.newSection = !hit;
+    });
     b.groups = groups; b.grouping = false; render();
   }
   async function pdfOfGroup(g) {
@@ -291,13 +299,168 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
 <button type="button" class="dbtn red" data-act="cancel">${esc(T("Annulla tutto", "Alles abbrechen"))}</button></main>`;
   }
 
+  /* ---------- ARCHIVIO: il "Ordner" virtuale. Anteprime, foto grande, destra e sinistra pagina per pagina, ordini a scelta.
+     I PDF li disegna pdf.js (lib/, niente CDN, eval spento). Le anteprime restano salvate sul telefono (IndexedDB) e si rifanno solo se mancano. */
+  const AR_SORTS = [["up", () => T("Ultimi caricati", "Zuletzt hochgeladen"), -1], ["date", () => T("Data della lettera", "Briefdatum"), -1], ["sender", () => T("Mittente A-Z", "Absender A-Z"), 1],
+    ["subject", () => T("Oggetto A-Z", "Betreff A-Z"), 1], ["section", () => T("Sezione A-Z", "Bereich A-Z"), 1], ["due", () => T("Scadenza", "Frist"), 1], ["amount", () => T("Importo", "Betrag"), -1], ["pages", () => T("Numero di pagine", "Seitenzahl"), -1]];
+  if (!D.arSort) { D.arSort = "up"; D.arDir = -1; D.arSec = "all"; }
+  const upAt = d => String(d.createdAt || d.updatedAt || "");
+  const fmtUp = d => { const s = upAt(d); if (!s) return ""; const t = new Date(s); if (isNaN(t)) return ""; const p = n => String(n).padStart(2, "0"); return p(t.getDate()) + "/" + p(t.getMonth() + 1) + "/" + String(t.getFullYear()).slice(2) + " " + p(t.getHours()) + ":" + p(t.getMinutes()); };
+  function arList() {
+    const k = D.arSort, dir = D.arDir, cmpT = (a, b) => String(a || "").localeCompare(String(b || ""), "de", { sensitivity: "base", numeric: true });
+    const val = d => k === "up" ? upAt(d) : k === "date" ? d.date : k === "sender" ? d.sender : k === "subject" ? d.subject : k === "section" ? d.section : k === "due" ? d.due : k === "amount" ? d.amount : k === "pages" ? d.pages : "";
+    const l = byOwner(live()).filter(d => D.arSec === "all" || d.section === D.arSec);
+    return l.sort((a, b) => {
+      const va = val(a), vb = val(b), ea = va === "" || va == null, eb = vb === "" || vb == null;
+      if (ea !== eb) return ea ? 1 : -1; /* i vuoti sempre in fondo */
+      let r = (k === "amount" || k === "pages") ? (Number(va) || 0) - (Number(vb) || 0) : cmpT(va, vb);
+      if (!r) r = upAt(b).localeCompare(upAt(a));
+      return r * (r && (k === "amount" || k === "pages" || !ea) ? dir : 1);
+    });
+  }
+  function vArch() {
+    const l = arList(), secs = allSections();
+    const dirTxt = (["up", "date", "due"].indexOf(D.arSort) >= 0) ? (D.arDir < 0 ? T("↓ dal più recente", "↓ neueste zuerst") : T("↑ dal più vecchio", "↑ älteste zuerst")) : (["amount", "pages"].indexOf(D.arSort) >= 0) ? (D.arDir < 0 ? T("↓ dal più grande", "↓ größte zuerst") : T("↑ dal più piccolo", "↑ kleinste zuerst")) : (D.arDir > 0 ? "A → Z" : "Z → A");
+    return `<div class="top"><div class="dtitle"><small>${esc(T("Il tuo Ordner: tocca un'anteprima e scorri", "Dein Ordner: Vorschau antippen und blättern"))}</small><b>${esc(T("Archivio", "Ordner"))}</b></div>${langBtns()}</div><main>${ownerChips()}
+<div class="dform arbar"><div class="drow2"><label>${esc(T("Ordina per", "Sortieren nach"))}<select id="arSort">${AR_SORTS.map(([v, l]) => `<option value="${v}" ${v === D.arSort ? "selected" : ""}>${esc(l())}</option>`).join("")}</select></label>
+<label>${esc(T("Sezione", "Bereich"))}<select id="arSec"><option value="all">${esc(T("Tutte", "Alle"))}</option>${secs.map(s => `<option value="${esc(s)}" ${s === D.arSec ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label></div>
+<button type="button" class="dbtn" data-act="ardir">${esc(dirTxt)}</button></div>
+<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
+${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class="arcard" data-act="arop" data-i="${i}"><span class="arth" data-th="${esc(d.id)}">${thumbHtml(d.id)}</span><b>${esc(d.sender || T("Senza mittente", "Ohne Absender"))}</b>${d.subject ? `<span class="arsub">${esc(d.subject)}</span>` : ""}${d.summary ? `<span class="arsum">${esc(d.summary)}</span>` : ""}<small>${esc([d.section, (d.pages || 1) + " " + T("pag.", "S.")].filter(Boolean).join(" · "))}</small><small>${esc(T("caricato ", "hochgeladen ") + fmtUp(d))}</small></button>`).join("")}</div>` : `<div class="dinfo">${esc(T("Nessun documento.", "Keine Dokumente."))}</div>`}</main>`;
+  }
+
+  /* pdf.js caricato solo quando serve */
+  let pdfReady = null;
+  function pdfLib() {
+    if (pdfReady) return pdfReady;
+    pdfReady = new Promise((ok, ko) => { if (window.pdfjsLib) return ok(window.pdfjsLib); const s = document.createElement("script"); s.src = "lib/pdf.min.js?v=3.11.174"; s.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "lib/pdf.worker.min.js?v=3.11.174"; ok(window.pdfjsLib); } catch (e) { ko(e); } }; s.onerror = () => { pdfReady = null; ko(new Error(T("Visore non caricato, controlla la connessione", "Viewer nicht geladen, Verbindung prüfen"))); }; document.head.appendChild(s); });
+    return pdfReady;
+  }
+  const pdfDocs = new Map(), pdfWait = new Map();
+  function getPdf(id) {
+    if (pdfDocs.has(id)) { const v = pdfDocs.get(id); pdfDocs.delete(id); pdfDocs.set(id, v); return Promise.resolve(v); }
+    if (pdfWait.has(id)) return pdfWait.get(id);
+    const p = (async () => {
+      const L = await pdfLib(); const j = await api("dPdf", { id }); if (!j.data) throw new Error(T("PDF non trovato", "PDF nicht gefunden"));
+      const by = Uint8Array.from(atob(j.data), c => c.charCodeAt(0));
+      const doc = await L.getDocument({ data: by, isEvalSupported: false, enableXfa: false }).promise;
+      pdfDocs.set(id, doc); while (pdfDocs.size > 8) { const k = pdfDocs.keys().next().value; const o = pdfDocs.get(k); pdfDocs.delete(k); try { o.destroy(); } catch (e) {} }
+      return doc;
+    })();
+    pdfWait.set(id, p); p.then(() => pdfWait.delete(id), () => pdfWait.delete(id));
+    return p;
+  }
+  async function pageToUrl(doc, n, width, q) {
+    const pg = await doc.getPage(n), v0 = pg.getViewport({ scale: 1 }), sc = width / v0.width, v = pg.getViewport({ scale: sc });
+    const c = document.createElement("canvas"); c.width = Math.ceil(v.width); c.height = Math.ceil(v.height);
+    const cx = c.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, c.width, c.height);
+    await pg.render({ canvasContext: cx, viewport: v }).promise;
+    const u = c.toDataURL("image/jpeg", q || 0.8); c.width = c.height = 0; return u;
+  }
+
+  /* anteprime: memoria + IndexedDB del telefono */
+  const TH = new Map(); let idb = null;
+  function thDb() { if (idb) return idb; idb = new Promise(ok => { try { const r = indexedDB.open("wiDocThumbs", 1); r.onupgradeneeded = () => r.result.createObjectStore("t"); r.onsuccess = () => ok(r.result); r.onerror = () => ok(null); } catch (e) { ok(null); } }); return idb; }
+  async function thGet(id) { const db = await thDb(); if (!db) return null; return new Promise(ok => { try { const q = db.transaction("t").objectStore("t").get(id); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); } catch (e) { ok(null); } }); }
+  async function thPut(id, u) { const db = await thDb(); if (!db) return; try { db.transaction("t", "readwrite").objectStore("t").put(u, id); } catch (e) {} }
+  const thumbHtml = id => TH.get(id) ? `<img src="${esc(TH.get(id))}" alt="">` : `<span class="spin"></span>`;
+  const thQ = []; let thRun = 0, thObs = null;
+  function thPaint(id) { const u = TH.get(id); if (!u) return; $$('[data-th="' + id.replace(/"/g, "") + '"]').forEach(el => { el.innerHTML = ""; const im = new Image(); im.alt = ""; im.src = u; el.appendChild(im); }); }
+  async function thPump() {
+    while (thRun < 2 && thQ.length) {
+      const id = thQ.shift(); thRun++;
+      (async () => {
+        try { let u = await thGet(id); if (!u) { const doc = await getPdf(id); u = await pageToUrl(doc, 1, 260, 0.7); thPut(id, u); } TH.set(id, u); thPaint(id); }
+        catch (e) { $$('[data-th="' + id.replace(/"/g, "") + '"]').forEach(el => { el.innerHTML = '<span class="arno">PDF</span>'; }); }
+        thRun--; thPump();
+      })();
+    }
+  }
+  function thWatch() {
+    if (thObs) thObs.disconnect();
+    const want = el => { const id = el.dataset.th; if (!TH.has(id) && thQ.indexOf(id) < 0) { thQ.push(id); thPump(); } };
+    if (!("IntersectionObserver" in window)) return $$("#dApp [data-th]").forEach(want);
+    thObs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { thObs.unobserve(e.target); want(e.target); } }), { rootMargin: "400px" });
+    $$("#dApp [data-th]").forEach(el => { if (!TH.has(el.dataset.th)) thObs.observe(el); });
+  }
+
+  /* visore a tutto schermo: destra/sinistra = pagina dopo/prima, come sfogliare un Ordner */
+  const V = { el: null, list: [], i: 0, p: 1, n: 1, zoom: false, tok: 0 };
+  function vwOpen(i) {
+    V.list = arList().map(d => d.id); V.i = i; V.p = 1; V.zoom = false;
+    if (!V.el) {
+      V.el = document.createElement("div"); V.el.id = "dViewer"; document.body.appendChild(V.el);
+      V.el.addEventListener("click", vwClick); V.el.addEventListener("change", vwChange);
+      let x0 = null, y0 = null;
+      V.el.addEventListener("touchstart", e => { if (e.touches.length !== 1 || V.zoom) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+      V.el.addEventListener("touchend", e => { if (x0 === null || V.zoom) return; const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0; x0 = null; if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3 && !e.target.closest("select,input,.vbar")) vwStep(dx < 0 ? 1 : -1); }, { passive: true });
+      document.addEventListener("keydown", e => { if (!V.el || V.el.hidden) return; if (e.target.closest && e.target.closest("input,select,textarea")) return; if (e.key === "ArrowRight") vwStep(1); else if (e.key === "ArrowLeft") vwStep(-1); else if (e.key === "Escape") vwClose(); });
+    }
+    V.el.hidden = false; document.documentElement.classList.add("vwopen"); vwShow();
+  }
+  function vwClose() { if (!V.el) return; V.tok++; V.el.hidden = true; V.el.innerHTML = ""; document.documentElement.classList.remove("vwopen"); thWatch(); }
+  const vwDoc = () => D.docs.find(x => x.id === V.list[V.i]);
+  async function vwStep(dir) {
+    const d = vwDoc(); if (!d) return;
+    if (dir > 0) { if (V.p < V.n) V.p++; else if (V.i < V.list.length - 1) { V.i++; V.p = 1; } else return toast(T("Ultima pagina dell'Ordner", "Letzte Seite im Ordner")); }
+    else { if (V.p > 1) V.p--; else if (V.i > 0) { V.i--; V.p = -1; } else return toast(T("Prima pagina dell'Ordner", "Erste Seite im Ordner")); }
+    V.zoom = false; vwShow();
+  }
+  function vwShow() {
+    const d = vwDoc(); if (!d) return vwClose();
+    const tok = ++V.tok; V.n = V.p === -1 ? (d.pages || 1) : Math.max(V.n && V.list[V.i] === V._cur ? V.n : (d.pages || 1), 1); if (V.p === -1) V.p = V.n; V._cur = d.id;
+    const secs = allSections(); if (d.section && secs.indexOf(d.section) < 0) secs.push(d.section);
+    const quick = TH.get(d.id) && V.p === 1 ? `<img class="vimg" src="${esc(TH.get(d.id))}" alt="">` : "";
+    V.el.innerHTML = `<div class="vbar vtop"><button type="button" class="vx" data-v="close" aria-label="${esc(T("Chiudi", "Schließen"))}">✕</button>
+<div class="vt"><b>${esc(d.sender || T("Senza mittente", "Ohne Absender"))}</b><small>${esc([d.subject, fmtDate(d.date), d.section].filter(Boolean).join(" · "))}</small>${d.summary ? `<span class="vsum">${esc(d.summary)}</span>` : ""}</div>
+<span class="vc" id="vCount">${esc(T("Pag. ", "S. ") + V.p + "/" + V.n + " · " + T("doc. ", "Dok. ") + (V.i + 1) + "/" + V.list.length)}</span></div>
+<div class="vpage ${V.zoom ? "z" : ""}" data-v="zoom">${quick}<span class="spin" ${quick ? 'style="position:absolute"' : ""}></span></div>
+<button type="button" class="vnav l" data-v="prev" aria-label="${esc(T("Pagina prima", "Vorherige Seite"))}">‹</button><button type="button" class="vnav r" data-v="next" aria-label="${esc(T("Pagina dopo", "Nächste Seite"))}">›</button>
+<div class="vbar vbot"><select id="vSec">${secs.map(s => `<option value="${esc(s)}" ${s === d.section ? "selected" : ""}>${esc(s)}</option>`).join("")}${newOpt(false)}</select>
+<input id="vSecNew" maxlength="40" placeholder="${newPh()}" hidden><button type="button" class="dbtn go" data-v="secsave" hidden>${esc(T("Sposta qui", "Hierher"))}</button>
+<button type="button" class="dbtn" data-v="card">${esc(T("Scheda", "Details"))}</button></div>`;
+    (async () => {
+      try {
+        const doc = await getPdf(d.id); if (tok !== V.tok) return;
+        if (doc.numPages !== V.n) { V.n = doc.numPages; if (V.p > V.n) V.p = V.n; const c = $("#vCount"); if (c) c.textContent = T("Pag. ", "S. ") + V.p + "/" + V.n + " · " + T("doc. ", "Dok. ") + (V.i + 1) + "/" + V.list.length; }
+        const w = Math.min(2200, Math.round(Math.min(window.innerWidth, 1100) * Math.min(window.devicePixelRatio || 1, 2) * 1.2));
+        const u = await pageToUrl(doc, V.p, w, 0.85); if (tok !== V.tok) return;
+        const box2 = V.el.querySelector(".vpage"); if (box2) { box2.innerHTML = ""; const im = new Image(); im.className = "vimg"; im.alt = ""; im.src = u; box2.appendChild(im); }
+        vwPreload();
+      } catch (e) { if (tok === V.tok) { const b = V.el.querySelector(".vpage"); if (b) b.innerHTML = `<div class="dinfo">${esc(msg(e))}</div>`; } }
+    })();
+  }
+  function vwPreload() { [V.list[V.i + 1], V.list[V.i - 1]].filter(Boolean).forEach(id => getPdf(id).catch(() => {})); }
+  function vwChange(e) {
+    if (e.target.id !== "vSec") return;
+    const d = vwDoc(), isNew = e.target.value === NEWSEC, inp = $("#vSecNew"), btn = V.el.querySelector('[data-v="secsave"]');
+    inp.hidden = !isNew; btn.hidden = !isNew && e.target.value === d.section;
+    if (isNew) inp.focus(); else if (e.target.value !== d.section) vwSetSec(e.target.value);
+  }
+  async function vwSetSec(sec) {
+    const d = vwDoc(); if (!d || !sec || sec === d.section) return;
+    await update(d, { section: sec });
+    if (!V.el.hidden && vwDoc() === d) { const s = $("#vSec"); if (s && !Array.from(s.options).some(o => o.value === d.section)) { const o = document.createElement("option"); o.value = o.textContent = d.section; s.insertBefore(o, s.lastElementChild); } if (s) s.value = d.section; const inp = $("#vSecNew"); if (inp) { inp.hidden = true; inp.value = ""; } const b = V.el.querySelector('[data-v="secsave"]'); if (b) b.hidden = true; }
+  }
+  function vwClick(e) {
+    const el = e.target.closest("[data-v]"); if (!el) return;
+    const a = el.dataset.v;
+    if (a === "close") return vwClose();
+    if (a === "next") return vwStep(1);
+    if (a === "prev") return vwStep(-1);
+    if (a === "zoom") { V.zoom = !V.zoom; el.classList.toggle("z", V.zoom); return; }
+    if (a === "secsave") { const s = $("#vSec").value; if (s === NEWSEC) { const n = $("#vSecNew").value.trim(); if (!n) { askName(); return $("#vSecNew").focus(); } return vwSetSec(n); } return vwSetSec(s); }
+    if (a === "card") { const id = V.list[V.i]; vwClose(); D.from = "arch"; D.cur = id; return go("doc"); }
+  }
+
   function render() {
     if (!D.on) return;
     const v = D.view;
-    const html = v === "secs" ? vSecs() : v === "sec" ? vSec() : v === "doc" ? vDoc() : v === "due" ? vDue() : v === "ask" ? vAsk() : v === "batch" ? vBatch() : vHome();
+    const html = v === "secs" ? vSecs() : v === "sec" ? vSec() : v === "doc" ? vDoc() : v === "due" ? vDue() : v === "ask" ? vAsk() : v === "batch" ? vBatch() : v === "arch" ? vArch() : vHome();
     const keepAsk = $("#dAskIn") ? $("#dAskIn").value : "";
     box.innerHTML = html + (v === "batch" || v === "doc" ? "" : nav());
     if ($("#dAskIn") && keepAsk) $("#dAskIn").value = keepAsk;
+    if (D.view === "arch") thWatch();
     if (D.view === "home") { renderRes(); const q = $("#dQ"); q && q.addEventListener("input", () => { D.q = q.value; renderRes(); }); }
   }
   const go = v => { stopMic(); D.view = v; D.sure = null; window.scrollTo(0, 0); render(); };
@@ -321,6 +484,8 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
   const runFilter = f => sortDate(live().filter(d => (!f.owner || d.owner === f.owner) && (!f.sections.length || f.sections.indexOf(d.section) >= 0) && (!f.from || String(d.date || "") >= f.from) && (!f.to || String(d.date || "") <= f.to) && (!f.text || match(d, f.text)) && (!f.due || (f.due === "open" ? d.due && !d.done : !!d.due)) && (!f.check || d.status === "check")));
 
   box.addEventListener("change", e => {
+    if (e.target.id === "arSort") { D.arSort = e.target.value; D.arDir = (AR_SORTS.find(x => x[0] === D.arSort) || [0, 0, -1])[2]; return render(); }
+    if (e.target.id === "arSec") { D.arSec = e.target.value; return render(); }
     if (e.target.id === "fSection") { const inp = $("#fSectionNew"); if (inp) { inp.hidden = e.target.value !== NEWSEC; if (!inp.hidden) inp.focus(); } return; }
     const s = e.target.closest("select[data-act]"); if (!s || !D.batch || !D.batch.groups) return;
     const g = D.batch.groups[+s.dataset.g]; if (!g) return;
@@ -339,6 +504,8 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
     const el = e.target.closest("[data-act]"); if (!el || el.tagName === "SELECT") return;
     const a = el.dataset.act, d = D.docs.find(x => x.id === D.cur), b = D.batch;
     if (a === "go") return go(el.dataset.v);
+    if (a === "arop") return vwOpen(+el.dataset.i);
+    if (a === "ardir") { D.arDir = -D.arDir; return render(); }
     if (a === "lang") { const o = $$('.langs button[data-l="' + el.dataset.l + '"]').find(x => !box.contains(x)); if (o) o.click(); return; }
     if (a === "cam" || a === "pick" || a === "pdf") return pickFiles(a);
     if (a === "open") return openDoc(el.dataset.id);
