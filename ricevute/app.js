@@ -304,6 +304,7 @@ $("#xEl").onclick=async()=>{busy(true);try{await exportPdf(perDocs(),"ELSTER Sch
   if(!token)return showLogin();
   try{user=await api("me")}catch(e){return showLogin()}
   $("#v-login").classList.add("hide");$(".app").classList.remove("hide");
+  if(window.WILOCK)WILOCK.ready();
   $("#who").textContent=user.email;
   if(!isAdmin()){$("#shoot").classList.add("hide");$("#pickFile").classList.add("hide");$("#checkMail").classList.add("hide")}
   applyLang();await load();loadStatus();

@@ -53,6 +53,10 @@ Ruoli: `admin` (tutto), `viewer` (sola lettura, niente documenti privati). Le sc
 5. Inserire i due URL in `config.js`.
 6. Mac mini: Google Drive per desktop con l'account info sincronizza `Backup/` sul disco; da lì una copia su iCloud.
 
+## Blocco dell'app (22/11/2026)
+
+`lock.js`, caricato per primo: codice a 4 cifre obbligatorio per chi è collegato (impronta PBKDF2-SHA256, 150.000 iterazioni, solo sul dispositivo) + Face ID/Touch ID facoltativo tramite passkey del dispositivo (WebAuthn, verifica utente obbligatoria). Si chiede a ogni apertura e dopo 1 minuto fuori dall'app; uscendo, i dati si coprono subito. Dopo 5 codici sbagliati: codice e accesso cancellati, si rientra con Google e si sceglie un codice nuovo. Ogni dispositivo ha il suo codice.
+
 ## Documenti (archivio dello studio, dal 18/11/2026)
 
 Interruttore Ricevute | Documenti in alto, solo per amministratori. File: `docs.js`, `docs.css`; API: azioni `dList dPage dGroup dSave dUpdate dDel dPdf dSecRename dAsk dAgent dApply` in `apps-script/api/Code.gs`.
