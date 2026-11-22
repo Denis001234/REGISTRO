@@ -76,7 +76,7 @@
   function row(d) {
     const tags = [d.owner === "vecchia" ? `<span class="dtag old">${esc(OWN.vecchia())}</span>` : "", d.status === "check" ? `<span class="dtag chk">${esc(T("da controllare", "prüfen"))}</span>` : "",
       d.due && !d.done ? `<span class="dtag ${days(d.due) <= 3 ? "due" : "ok"}">${esc(whenTxt(days(d.due)))}</span>` : ""].join("");
-    return `<button type="button" class="dr" data-act="open" data-id="${esc(d.id)}"><span class="m"><b>${esc(d.sender || T("Senza mittente", "Ohne Absender"))}</b><small>${esc([d.subject, d.section].filter(Boolean).join(" · "))}</small></span><span class="s">${esc(fmtDate(d.date))}${tags}</span></button>`;
+    return `<button type="button" class="dr" data-act="open" data-id="${esc(d.id)}"><span class="m"><b>${esc(d.sender || d.subject || (d.section && d.section !== "Altro" ? d.section : "") || T("Senza mittente", "Ohne Absender"))}</b><small>${esc([d.subject, d.section].filter(Boolean).join(" · "))}</small></span><span class="s">${esc(fmtDate(d.date))}${tags}</span></button>`;
   }
   const STOP = new Set(["trova", "trovami", "cerca", "dove", "documento", "documenti", "lettera", "lettere", "della", "dello", "delle", "degli", "quale", "quali", "mostra", "fammi", "vedere", "finde", "suche", "zeig", "zeige", "bitte", "dokument", "dokumente", "brief", "briefe", "von", "der", "die", "das", "und"]);
   const guess = q => { const w = norm(q).split(/[^a-z0-9]+/).filter(x => x.length >= 4 && !STOP.has(x)); if (!w.length) return [];
@@ -266,7 +266,7 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
       if (g.saved) { b.done++; continue; }
       try {
         const p = await pdfOfGroup(g);
-        const j = await api("dSave", { pdf: p.b64, doc: { owner: g.owner, section: g.section, sender: g.sender, date: g.date, subject: g.subject, summary: g.summary, due: g.due, dueWhat: g.dueWhat, amount: g.amount, ref: g.ref, pages: p.pages, private: g.private === true, unsure: g.unsure === true, newSection: g.newSection === true, oldRule: g.oldRule === true } });
+        const j = await api("dSave", { pdf: p.b64, doc: { owner: g.owner, section: g.section, sender: g.sender || (g.userSec && g.section !== "Altro" ? g.section : ""), date: g.date, subject: g.subject, summary: g.summary, due: g.due, dueWhat: g.dueWhat, amount: g.amount, ref: g.ref, pages: p.pages, private: g.private === true, unsure: g.unsure === true, newSection: g.newSection === true, oldRule: g.oldRule === true } });
         g.saved = true; saved.push(j.doc); D.docs.push(j.doc);
       } catch (e) { toast(msg(e)); break; }
       b.done++; render();
@@ -304,6 +304,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
   const AR_SORTS = [["up", () => T("Ultimi caricati", "Zuletzt hochgeladen"), -1], ["date", () => T("Data della lettera", "Briefdatum"), -1], ["sender", () => T("Mittente A-Z", "Absender A-Z"), 1],
     ["subject", () => T("Oggetto A-Z", "Betreff A-Z"), 1], ["section", () => T("Sezione A-Z", "Bereich A-Z"), 1], ["due", () => T("Scadenza", "Frist"), 1], ["amount", () => T("Importo", "Betrag"), -1], ["pages", () => T("Numero di pagine", "Seitenzahl"), -1]];
   if (!D.arSort) { D.arSort = "up"; D.arDir = -1; D.arSec = "all"; }
+  const titleOf = d => d.sender || d.subject || (d.section && d.section !== "Altro" ? d.section : "") || T("Senza mittente", "Ohne Absender");
   const upAt = d => String(d.createdAt || d.updatedAt || "");
   const fmtUp = d => { const s = upAt(d); if (!s) return ""; const t = new Date(s); if (isNaN(t)) return ""; const p = n => String(n).padStart(2, "0"); return p(t.getDate()) + "/" + p(t.getMonth() + 1) + "/" + String(t.getFullYear()).slice(2) + " " + p(t.getHours()) + ":" + p(t.getMinutes()); };
   function arList() {
@@ -330,7 +331,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
   }
   function arRes(l) {
     return `<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
-${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class="arcard" data-act="arop" data-i="${i}"><span class="arth" data-th="${esc(d.id)}">${thumbHtml(d.id)}</span><b>${esc(d.sender || T("Senza mittente", "Ohne Absender"))}</b>${d.subject ? `<span class="arsub">${esc(d.subject)}</span>` : ""}${d.summary ? `<span class="arsum">${esc(d.summary)}</span>` : ""}<small>${esc([d.section, (d.pages || 1) + " " + T("pag.", "S.")].filter(Boolean).join(" · "))}</small><small>${esc(T("caricato ", "hochgeladen ") + fmtUp(d))}</small></button>`).join("")}</div>` : `<div class="dinfo">${esc(D.arQ ? T("Niente trovato per questa ricerca.", "Nichts gefunden.") : T("Nessun documento.", "Keine Dokumente."))}</div>`}`;
+${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class="arcard" data-act="arop" data-i="${i}"><span class="arth" data-th="${esc(d.id)}">${thumbHtml(d.id)}</span><b>${esc(titleOf(d))}</b>${d.subject ? `<span class="arsub">${esc(d.subject)}</span>` : ""}${d.summary ? `<span class="arsum">${esc(d.summary)}</span>` : ""}<small>${esc([d.section, (d.pages || 1) + " " + T("pag.", "S.")].filter(Boolean).join(" · "))}</small><small>${esc(T("caricato ", "hochgeladen ") + fmtUp(d))}</small></button>`).join("")}</div>` : `<div class="dinfo">${esc(D.arQ ? T("Niente trovato per questa ricerca.", "Nichts gefunden.") : T("Nessun documento.", "Keine Dokumente."))}</div>`}`;
   }
 
   /* pdf.js caricato solo quando serve */
@@ -416,7 +417,7 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     const secs = allSections(); if (d.section && secs.indexOf(d.section) < 0) secs.push(d.section);
     const quick = TH.get(d.id) && V.p === 1 ? `<img class="vimg" src="${esc(TH.get(d.id))}" alt="">` : "";
     V.el.innerHTML = `<div class="vbar vtop"><button type="button" class="vx" data-v="close" aria-label="${esc(T("Chiudi", "Schließen"))}">✕</button>
-<div class="vt"><b>${esc(d.sender || T("Senza mittente", "Ohne Absender"))}</b><small>${esc([d.subject, fmtDate(d.date), d.section].filter(Boolean).join(" · "))}</small>${d.summary ? `<span class="vsum">${esc(d.summary)}</span>` : ""}</div>
+<div class="vt"><b>${esc(titleOf(d))}</b><small>${esc([d.subject, fmtDate(d.date), d.section].filter(Boolean).join(" · "))}</small>${d.summary ? `<span class="vsum">${esc(d.summary)}</span>` : ""}</div>
 <span class="vc" id="vCount">${esc(T("Pag. ", "S. ") + V.p + "/" + V.n + " · " + T("doc. ", "Dok. ") + (V.i + 1) + "/" + V.list.length)}</span></div>
 <div class="vpage ${V.zoom ? "z" : ""}" data-v="zoom">${quick}<span class="spin" ${quick ? 'style="position:absolute"' : ""}></span></div>
 <button type="button" class="vnav l" data-v="prev" aria-label="${esc(T("Pagina prima", "Vorherige Seite"))}">‹</button><button type="button" class="vnav r" data-v="next" aria-label="${esc(T("Pagina dopo", "Nächste Seite"))}">›</button>
@@ -443,8 +444,9 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
   }
   async function vwSetSec(sec) {
     const d = vwDoc(); if (!d || !sec || sec === d.section) return;
-    await update(d, { section: sec });
-    if (!V.el.hidden && vwDoc() === d) { const s = $("#vSec"); if (s && !Array.from(s.options).some(o => o.value === d.section)) { const o = document.createElement("option"); o.value = o.textContent = d.section; s.insertBefore(o, s.lastElementChild); } if (s) s.value = d.section; const inp = $("#vSecNew"); if (inp) { inp.hidden = true; inp.value = ""; } const b = V.el.querySelector('[data-v="secsave"]'); if (b) b.hidden = true; }
+    const patch = { section: sec }; if (!String(d.sender || "").trim()) patch.sender = sec;
+    await update(d, patch);
+    if (!V.el.hidden && vwDoc() === d) { const tb = V.el.querySelector(".vt b"); if (tb) tb.textContent = titleOf(d); const s = $("#vSec"); if (s && !Array.from(s.options).some(o => o.value === d.section)) { const o = document.createElement("option"); o.value = o.textContent = d.section; s.insertBefore(o, s.lastElementChild); } if (s) s.value = d.section; const inp = $("#vSecNew"); if (inp) { inp.hidden = true; inp.value = ""; } const b = V.el.querySelector('[data-v="secsave"]'); if (b) b.hidden = true; }
   }
   function vwClick(e) {
     const el = e.target.closest("[data-v]"); if (!el) return;
@@ -499,6 +501,7 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     if (s.dataset.act === "gown") g.owner = s.value;
     else if (s.dataset.act === "gsec") {
       const inp = box.querySelector('input[data-act="gsecnew"][data-g="' + s.dataset.g + '"]');
+      g.userSec = true;
       if (s.value === NEWSEC) { g.secNew = true; g.section = inp ? inp.value.trim() : ""; g.newSection = true; if (inp) { inp.hidden = false; inp.focus(); } }
       else { g.secNew = false; g.section = s.value; g.newSection = D.sections.indexOf(s.value) < 0; if (inp) inp.hidden = true; }
     }
@@ -531,7 +534,8 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     if (d && a === "save") {
       let sec = $("#fSection").value;
       if (sec === NEWSEC) { sec = $("#fSectionNew").value.trim(); if (!sec) { askName(); return $("#fSectionNew").focus(); } }
-      return update(d, { owner: $("#fOwner").value, section: sec, sender: $("#fSender").value, subject: $("#fSubject").value, date: $("#fDate").value, due: $("#fDue").value, dueWhat: $("#fDueWhat").value, amount: $("#fAmount").value, ref: $("#fRef").value, summary: $("#fSummary").value });
+      const snd = $("#fSender").value.trim() || (sec !== "Altro" && sec !== d.section ? sec : "");
+      return update(d, { owner: $("#fOwner").value, section: sec, sender: snd, subject: $("#fSubject").value, date: $("#fDate").value, due: $("#fDue").value, dueWhat: $("#fDueWhat").value, amount: $("#fAmount").value, ref: $("#fRef").value, summary: $("#fSummary").value });
     }
     if (d && a === "okdoc") return update(d, { status: "ok" });
     if (d && a === "done") return update(d, { done: !d.done });
