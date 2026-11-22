@@ -73,10 +73,12 @@
     const it = [["home", ICON.home, T("Documenti", "Dokumente")], ["arch", ICON.arch, T("Archivio", "Ordner")], ["secs", ICON.secs, T("Sezioni", "Bereiche")], ["due", ICON.due, T("Scadenze", "Fristen")], ["ask", ICON.ask, T("Chiedi", "Fragen")]];
     return `<nav class="tabs"><div class="in">${it.map(([v, i, l]) => `<button type="button" data-act="go" data-v="${v}" class="${D.view === v ? "on" : ""}">${i}<span>${esc(l)}</span></button>`).join("")}</div></nav>`;
   }
+  /* mittente "finto" (vuoto, "Senza mittente", "sconosciuto"...) = mittente mancante */
+  const realSender = x => { const t = String(x == null ? "" : x).trim(); return /^(senza mittente|mittente (non letto|sconosciuto|mancante)|sconosciuto|non (leggibile|letto)|ohne absender|absender (unbekannt|nicht gelesen)|unbekannt|unknown|n\.?\s?[ad]\.?|n\\/a|null|none|undefined|[-–—?.\s]*)$/i.test(t) ? "" : t; };
   function row(d) {
     const tags = [d.owner === "vecchia" ? `<span class="dtag old">${esc(OWN.vecchia())}</span>` : "", d.status === "check" ? `<span class="dtag chk">${esc(T("da controllare", "prüfen"))}</span>` : "",
       d.due && !d.done ? `<span class="dtag ${days(d.due) <= 3 ? "due" : "ok"}">${esc(whenTxt(days(d.due)))}</span>` : ""].join("");
-    return `<button type="button" class="dr" data-act="open" data-id="${esc(d.id)}"><span class="m"><b>${esc(d.sender || d.subject || (d.section && d.section !== "Altro" ? d.section : "") || T("Senza mittente", "Ohne Absender"))}</b><small>${esc([d.subject, d.section].filter(Boolean).join(" · "))}</small></span><span class="s">${esc(fmtDate(d.date))}${tags}</span></button>`;
+    return `<button type="button" class="dr" data-act="open" data-id="${esc(d.id)}"><span class="m"><b>${esc(realSender(d.sender) || d.subject || (d.section && d.section !== "Altro" ? d.section : "") || T("Senza mittente", "Ohne Absender"))}</b><small>${esc([d.subject, d.section].filter(Boolean).join(" · "))}</small></span><span class="s">${esc(fmtDate(d.date))}${tags}</span></button>`;
   }
   const STOP = new Set(["trova", "trovami", "cerca", "dove", "documento", "documenti", "lettera", "lettere", "della", "dello", "delle", "degli", "quale", "quali", "mostra", "fammi", "vedere", "finde", "suche", "zeig", "zeige", "bitte", "dokument", "dokumente", "brief", "briefe", "von", "der", "die", "das", "und"]);
   const guess = q => { const w = norm(q).split(/[^a-z0-9]+/).filter(x => x.length >= 4 && !STOP.has(x)); if (!w.length) return [];
@@ -266,7 +268,7 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
       if (g.saved) { b.done++; continue; }
       try {
         const p = await pdfOfGroup(g);
-        const j = await api("dSave", { pdf: p.b64, doc: { owner: g.owner, section: g.section, sender: g.sender || (g.userSec && g.section !== "Altro" ? g.section : ""), date: g.date, subject: g.subject, summary: g.summary, due: g.due, dueWhat: g.dueWhat, amount: g.amount, ref: g.ref, pages: p.pages, private: g.private === true, unsure: g.unsure === true, newSection: g.newSection === true, oldRule: g.oldRule === true } });
+        const j = await api("dSave", { pdf: p.b64, doc: { owner: g.owner, section: g.section, sender: realSender(g.sender) || (g.userSec && g.section !== "Altro" ? g.section : ""), date: g.date, subject: g.subject, summary: g.summary, due: g.due, dueWhat: g.dueWhat, amount: g.amount, ref: g.ref, pages: p.pages, private: g.private === true, unsure: g.unsure === true, newSection: g.newSection === true, oldRule: g.oldRule === true } });
         g.saved = true; saved.push(j.doc); D.docs.push(j.doc);
       } catch (e) { toast(msg(e)); break; }
       b.done++; render();
@@ -304,7 +306,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
   const AR_SORTS = [["up", () => T("Ultimi caricati", "Zuletzt hochgeladen"), -1], ["date", () => T("Data della lettera", "Briefdatum"), -1], ["sender", () => T("Mittente A-Z", "Absender A-Z"), 1],
     ["subject", () => T("Oggetto A-Z", "Betreff A-Z"), 1], ["section", () => T("Sezione A-Z", "Bereich A-Z"), 1], ["due", () => T("Scadenza", "Frist"), 1], ["amount", () => T("Importo", "Betrag"), -1], ["pages", () => T("Numero di pagine", "Seitenzahl"), -1]];
   if (!D.arSort) { D.arSort = "up"; D.arDir = -1; D.arSec = "all"; }
-  const titleOf = d => d.sender || d.subject || (d.section && d.section !== "Altro" ? d.section : "") || T("Senza mittente", "Ohne Absender");
+  const titleOf = d => realSender(d.sender) || d.subject || (d.section && d.section !== "Altro" ? d.section : "") || T("Senza mittente", "Ohne Absender");
   const upAt = d => String(d.createdAt || d.updatedAt || "");
   const fmtUp = d => { const s = upAt(d); if (!s) return ""; const t = new Date(s); if (isNaN(t)) return ""; const p = n => String(n).padStart(2, "0"); return p(t.getDate()) + "/" + p(t.getMonth() + 1) + "/" + String(t.getFullYear()).slice(2) + " " + p(t.getHours()) + ":" + p(t.getMinutes()); };
   function arList() {
@@ -327,7 +329,7 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
 <label>${esc(T("Sezione", "Bereich"))}<select id="arSec"><option value="all">${esc(T("Tutte", "Alle"))}</option>${secs.map(s => `<option value="${esc(s)}" ${s === D.arSec ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label></div>
 <button type="button" class="dbtn" data-act="ardir">${esc(dirTxt)}</button></div>
 <div class="search arsearch"><input id="arQ" type="search" value="${esc(D.arQ || "")}" placeholder="${esc(T("Cerca: mittente, oggetto, nome, parola…", "Suchen: Absender, Betreff, Name, Wort…"))}" autocomplete="off" enterkeyhint="search">${D.arQ ? `<button type="button" class="arx" data-act="arclear" aria-label="${esc(T("Cancella", "Löschen"))}">✕</button>` : ""}</div>
-<div id="arRes">${arRes(l)}</div></main>`;
+<div id="arRes">${arRes(l)}</div><small style="color:var(--muted);text-align:center;display:block;margin-top:8px">${esc(T("versione archivio 10", "Ordner-Version 10"))}</small></main>`;
   }
   function arRes(l) {
     return `<small style="color:var(--muted)">${esc(nDoc(l.length))}</small>
@@ -444,7 +446,7 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
   }
   async function vwSetSec(sec) {
     const d = vwDoc(); if (!d || !sec || sec === d.section) return;
-    const patch = { section: sec }; if (!String(d.sender || "").trim()) patch.sender = sec;
+    const patch = { section: sec }; if (!realSender(d.sender)) patch.sender = sec;
     await update(d, patch);
     if (!V.el.hidden && vwDoc() === d) { const tb = V.el.querySelector(".vt b"); if (tb) tb.textContent = titleOf(d); const s = $("#vSec"); if (s && !Array.from(s.options).some(o => o.value === d.section)) { const o = document.createElement("option"); o.value = o.textContent = d.section; s.insertBefore(o, s.lastElementChild); } if (s) s.value = d.section; const inp = $("#vSecNew"); if (inp) { inp.hidden = true; inp.value = ""; } const b = V.el.querySelector('[data-v="secsave"]'); if (b) b.hidden = true; }
   }
@@ -534,7 +536,7 @@ ${l.length ? `<div class="argrid">${l.map((d, i) => `<button type="button" class
     if (d && a === "save") {
       let sec = $("#fSection").value;
       if (sec === NEWSEC) { sec = $("#fSectionNew").value.trim(); if (!sec) { askName(); return $("#fSectionNew").focus(); } }
-      const snd = $("#fSender").value.trim() || (sec !== "Altro" && sec !== d.section ? sec : "");
+      const snd = realSender($("#fSender").value) || (sec !== "Altro" ? sec : "");
       return update(d, { owner: $("#fOwner").value, section: sec, sender: snd, subject: $("#fSubject").value, date: $("#fDate").value, due: $("#fDue").value, dueWhat: $("#fDueWhat").value, amount: $("#fAmount").value, ref: $("#fRef").value, summary: $("#fSummary").value });
     }
     if (d && a === "okdoc") return update(d, { status: "ok" });
