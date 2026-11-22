@@ -83,6 +83,10 @@
   const listOf = (l, empty) => l.length ? `<div class="list">${l.map(row).join("")}</div>` : `<div class="dinfo">${esc(empty || T("Nessun documento.", "Keine Dokumente."))}</div>`;
   const ownerChips = () => `<div class="chips">${[["all", T("Tutti", "Alle")], ["nuova", OWN.nuova()], ["vecchia", OWN.vecchia()]].map(([k, l]) => `<button type="button" data-act="owner" data-o="${k}" class="${D.owner === k ? "on" : ""}">${esc(l)}</button>`).join("")}</div>`;
   const secCount = s => byOwner(live()).filter(d => d.section === s).length;
+  const NEWSEC = "__nuova__";
+  const newOpt = sel => `<option value="${NEWSEC}" ${sel ? "selected" : ""}>${esc(T("＋ Scrivi una nuova sezione…", "＋ Neuen Bereich eingeben…"))}</option>`;
+  const newPh = () => esc(T("es. Stadt Waiblingen, Avvocato Rossi…", "z. B. Stadt Waiblingen, Anwalt Müller…"));
+  const askName = () => toast(T("Scrivi il nome della nuova sezione", "Bitte den Namen des neuen Bereichs eingeben"));
   function allSections() { const s = D.sections.slice(); live().forEach(d => { if (d.section && s.indexOf(d.section) < 0) s.push(d.section); }); return s; }
 
   function vHome() {
@@ -140,7 +144,7 @@ ${d.due ? `<div class="ddue"><div class="h"><b>${esc(T("Scadenza", "Frist"))} ${
 <button type="button" class="dbtn ${d.done ? "" : "go"}" data-act="done">${esc(d.done ? T("Segna come da fare", "Wieder offen") : T("Fatto / pagato: basta avvisi", "Erledigt / bezahlt: keine Erinnerungen"))}</button></div>` : ""}
 <div class="dform">
 <label>${esc(T("GbR", "GbR"))}<select id="fOwner"><option value="nuova" ${d.owner !== "vecchia" ? "selected" : ""}>${esc(OWN.nuova())}</option><option value="vecchia" ${d.owner === "vecchia" ? "selected" : ""}>${esc(OWN.vecchia())}</option></select></label>
-<label>${esc(T("Sezione", "Bereich"))}<select id="fSection">${secOpts}</select></label>
+<label>${esc(T("Sezione", "Bereich"))}<select id="fSection">${secOpts}${newOpt(false)}</select><input id="fSectionNew" maxlength="40" placeholder="${newPh()}" hidden></label>
 <label>${esc(T("Mittente", "Absender"))}<input id="fSender" value="${esc(d.sender || "")}" maxlength="100"></label>
 <label>${esc(T("Oggetto", "Betreff"))}<input id="fSubject" value="${esc(d.subject || "")}" maxlength="160"></label>
 <div class="drow2"><label>${esc(T("Data lettera", "Briefdatum"))}<input id="fDate" type="date" value="${esc(d.date || "")}"></label><label>${esc(T("Scadenza", "Frist"))}<input id="fDue" type="date" value="${esc(d.due || "")}"></label></div>
@@ -246,6 +250,8 @@ ${listOf(l, T("Nessuna scadenza.", "Keine Fristen."))}</main>`;
   }
   async function saveAll() {
     const b = D.batch; if (!b || !b.groups || b.saving) return;
+    const empty = b.groups.findIndex(g => !g.saved && g.secNew && !String(g.section || "").trim());
+    if (empty >= 0) { askName(); const inp = box.querySelector('input[data-act="gsecnew"][data-g="' + empty + '"]'); return inp && inp.focus(); }
     b.saving = true; b.done = 0; render();
     const saved = [];
     for (const g of b.groups) {
@@ -277,7 +283,8 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
 <div class="dthumbs">${g.items.map(i => b.items[i].url ? `<img src="${esc(b.items[i].url)}" alt="">` : `<span>PDF</span>`).join("")}</div>
 <div><b>${esc(g.sender || T("Mittente non letto", "Absender nicht gelesen"))}</b> <span class="dtag ok">${g.items.length} ${esc(T("pag.", "S."))}</span>${g.unsure ? ` <span class="dtag chk">${esc(T("da controllare", "prüfen"))}</span>` : ""}${g.newSection ? ` <span class="dtag ok">${esc(T("nuova sezione", "neuer Bereich"))}</span>` : ""}<br><small style="color:var(--muted)">${esc([g.subject, g.due ? T("scadenza ", "Frist ") + fmtDate(g.due) : ""].filter(Boolean).join(" · "))}</small></div>
 <div class="drow2"><label>GbR<select data-act="gown" data-g="${gi}"><option value="nuova" ${g.owner !== "vecchia" ? "selected" : ""}>${esc(OWN.nuova())}</option><option value="vecchia" ${g.owner === "vecchia" ? "selected" : ""}>${esc(OWN.vecchia())}</option></select></label>
-<label>${esc(T("Sezione", "Bereich"))}<select data-act="gsec" data-g="${gi}">${secs.map(s => `<option value="${esc(s)}" ${s === g.section ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label></div>
+<label>${esc(T("Sezione", "Bereich"))}<select data-act="gsec" data-g="${gi}">${secs.map(s => `<option value="${esc(s)}" ${!g.secNew && s === g.section ? "selected" : ""}>${esc(s)}</option>`).join("")}${newOpt(g.secNew)}</select></label></div>
+<input data-act="gsecnew" data-g="${gi}" maxlength="40" placeholder="${newPh()}" value="${esc(g.secNew ? g.section || "" : "")}" ${g.secNew ? "" : "hidden"}>
 <div class="drow3">${gi ? `<button type="button" class="dbtn" data-act="gmerge" data-g="${gi}">${esc(T("Unisci a sopra", "Mit oben"))}</button>` : `<span></span>`}${g.items.length > 1 ? `<button type="button" class="dbtn" data-act="gsplit" data-g="${gi}">${esc(T("Dividi", "Trennen"))}</button>` : `<span></span>`}<button type="button" class="dbtn red" data-act="gdrop" data-g="${gi}">${esc(T("Togli", "Weglassen"))}</button></div>
 </div>`).join("")}
 <button type="button" class="dbtn go" style="min-height:54px;font-size:16px" data-act="saveall" ${b.saving || !b.groups.length ? "disabled" : ""}>${esc(b.saving ? T("Archivio " + b.done + " di " + b.groups.length + "…", "Archiviere " + b.done + " von " + b.groups.length + "…") : T("Archivia tutti e " + b.groups.length, "Alle " + b.groups.length + " archivieren"))}</button>
@@ -314,9 +321,19 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
   const runFilter = f => sortDate(live().filter(d => (!f.owner || d.owner === f.owner) && (!f.sections.length || f.sections.indexOf(d.section) >= 0) && (!f.from || String(d.date || "") >= f.from) && (!f.to || String(d.date || "") <= f.to) && (!f.text || match(d, f.text)) && (!f.due || (f.due === "open" ? d.due && !d.done : !!d.due)) && (!f.check || d.status === "check")));
 
   box.addEventListener("change", e => {
+    if (e.target.id === "fSection") { const inp = $("#fSectionNew"); if (inp) { inp.hidden = e.target.value !== NEWSEC; if (!inp.hidden) inp.focus(); } return; }
     const s = e.target.closest("select[data-act]"); if (!s || !D.batch || !D.batch.groups) return;
     const g = D.batch.groups[+s.dataset.g]; if (!g) return;
-    if (s.dataset.act === "gown") g.owner = s.value; else if (s.dataset.act === "gsec") { g.section = s.value; g.newSection = D.sections.indexOf(s.value) < 0; }
+    if (s.dataset.act === "gown") g.owner = s.value;
+    else if (s.dataset.act === "gsec") {
+      const inp = box.querySelector('input[data-act="gsecnew"][data-g="' + s.dataset.g + '"]');
+      if (s.value === NEWSEC) { g.secNew = true; g.section = inp ? inp.value.trim() : ""; g.newSection = true; if (inp) { inp.hidden = false; inp.focus(); } }
+      else { g.secNew = false; g.section = s.value; g.newSection = D.sections.indexOf(s.value) < 0; if (inp) inp.hidden = true; }
+    }
+  });
+  box.addEventListener("input", e => {
+    const t = e.target; if (!t.matches || !t.matches('input[data-act="gsecnew"]') || !D.batch || !D.batch.groups) return;
+    const g = D.batch.groups[+t.dataset.g]; if (g) { g.section = t.value.trim(); g.newSection = true; }
   });
   box.addEventListener("click", async e => {
     const el = e.target.closest("[data-act]"); if (!el || el.tagName === "SELECT") return;
@@ -336,7 +353,11 @@ ${g.private ? `<div class="warn"><span>${esc(T("Sembra una lettera PRIVATA: l'ar
       try { const j = await api("dSecRename", { from: D.sec, to }); D.sections = j.sections; live().forEach(x => { if (x.section === D.sec) x.section = to; }); D.sec = to; toast(T("Fatto ✓", "Erledigt ✓")); } catch (er) { toast(msg(er)); }
       return render();
     }
-    if (d && a === "save") return update(d, { owner: $("#fOwner").value, section: $("#fSection").value, sender: $("#fSender").value, subject: $("#fSubject").value, date: $("#fDate").value, due: $("#fDue").value, dueWhat: $("#fDueWhat").value, amount: $("#fAmount").value, ref: $("#fRef").value, summary: $("#fSummary").value });
+    if (d && a === "save") {
+      let sec = $("#fSection").value;
+      if (sec === NEWSEC) { sec = $("#fSectionNew").value.trim(); if (!sec) { askName(); return $("#fSectionNew").focus(); } }
+      return update(d, { owner: $("#fOwner").value, section: sec, sender: $("#fSender").value, subject: $("#fSubject").value, date: $("#fDate").value, due: $("#fDue").value, dueWhat: $("#fDueWhat").value, amount: $("#fAmount").value, ref: $("#fRef").value, summary: $("#fSummary").value });
+    }
     if (d && a === "okdoc") return update(d, { status: "ok" });
     if (d && a === "done") return update(d, { done: !d.done });
     if (d && a === "rem") { const n = +el.dataset.n, r = (Array.isArray(d.remind) ? d.remind : [3, 2, 1]).slice(); const k = r.indexOf(n); if (k >= 0) r.splice(k, 1); else r.push(n); return update(d, { remind: r }); }
